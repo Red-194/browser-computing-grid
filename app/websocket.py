@@ -1,4 +1,4 @@
-import uuid
+import uuid, time
 from datetime import datetime
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
@@ -31,8 +31,11 @@ async def websocket_endpoint(websocket: WebSocket):
                     uuid=str(uuid.uuid4()),
                     ip=websocket.client.host,
                     cores=message["cores"],
-                    memory=message["memory"]
+                    memory=message["memory"],
+                    websocket=websocket
                 )
+
+                print(worker.websocket)
 
                 worker.last_heartbeat = datetime.now()
 
@@ -56,6 +59,19 @@ async def websocket_endpoint(websocket: WebSocket):
                     f"Heartbeat received from {worker_uuid} "
                     f"at {workers[worker_uuid].last_heartbeat}"
                 )
+
+            elif message["type"] == "pong":
+
+                latency = (time.perf_counter() - message["timestamp"]) * 1000
+
+                workers[worker_uuid].latency = round(latency, 1)
+
+                print(
+                    f"Latency {worker_uuid}: "
+                    f"{workers[worker_uuid].latency} ms"
+                )
+
+                await notify_dashboards()
 
     except WebSocketDisconnect:
 

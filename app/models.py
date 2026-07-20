@@ -1,5 +1,6 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
+from fastapi import WebSocket
 
 @dataclass
 class WorkerMetadata:
@@ -15,4 +16,5 @@ class Worker:
     status: str = "Idle"
     latency: float = 0.0
     last_heartbeat: datetime | None = None
+    websocket: WebSocket | None = field(default=None, repr=False, compare=False)
     metadata: WorkerMetadata | None = None

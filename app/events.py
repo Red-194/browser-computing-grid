@@ -20,7 +20,8 @@ async def notify_dashboards():
             "ip": worker.ip,
             "status": worker.status,
             "cores": worker.cores,
-            "memory": worker.memory
+            "memory": worker.memory,
+            "latency": worker.latency
         }
 
         for worker in workers.values()

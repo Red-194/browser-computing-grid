@@ -29,6 +29,7 @@ source.onmessage = (event) => {
                 <td>${worker.status}</td>
                 <td>${worker.cores}</td>
                 <td>${worker.memory}</td>
+                <td>${worker.latency} ms</td>
             </tr>
         `;
 

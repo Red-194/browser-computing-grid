@@ -25,6 +25,18 @@ function sendHeartbeat() {
 
 }
 
+function sendPong(timestamp) {
+
+    socket.send(JSON.stringify({
+
+        type: "pong",
+
+        timestamp
+
+    }));
+
+}
+
 socket.onopen = () => {
 
     document.getElementById("status").textContent = "Registering...";
@@ -45,11 +57,15 @@ socket.onmessage = (event) => {
 
     if (message.type === "register_ack") {
 
-        document.getElementById("uuid").textContent = message.uuid;
-        
         document.getElementById("status").textContent = "Connected • Idle";
 
-        heartbeatTimer = setInterval(sendHeartbeat, HEARTBEAT_INTERVAL);
+        setInterval(sendHeartbeat, HEARTBEAT_INTERVAL);
+
+    }
+
+    else if (message.type === "ping") {
+
+        sendPong(message.timestamp);
 
     }
 
