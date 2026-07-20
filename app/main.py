@@ -13,7 +13,6 @@ from .websocket import router as websocket_router
 @asynccontextmanager
 async def lifespan(app: FastAPI):
 
-    print("Starting ping task...")
     asyncio.create_task(ping_workers())
 
     yield

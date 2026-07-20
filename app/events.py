@@ -1,6 +1,5 @@
 import asyncio
 import json
-from dataclasses import asdict
 
 from fastapi import APIRouter
 from fastapi.responses import StreamingResponse

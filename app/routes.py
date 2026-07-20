@@ -1,7 +1,5 @@
-from dataclasses import asdict
-
 from fastapi import APIRouter, Request
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from .registry import workers
@@ -42,19 +40,3 @@ async def worker(request: Request):
         name="worker.html",
         context={}
     )
-
-
-@router.get("/workers")
-async def get_workers():
-
-    return JSONResponse([
-        {
-            "uuid": worker.uuid,
-            "ip": worker.ip,
-            "status": worker.status,
-            "cores": worker.cores,
-            "memory": worker.memory
-        }
-
-        for worker in workers.values()
-    ])

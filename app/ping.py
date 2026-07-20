@@ -8,15 +8,18 @@ async def ping_workers():
 
     while True:
 
-        print(f"Workers: {len(workers)}")
-
         for worker in workers.values():
 
-            if worker.websocket is not None:
+            if worker.websocket is None:
+                continue
 
+            try:
                 await worker.websocket.send_json({
                     "type": "ping",
                     "timestamp": time.perf_counter()
                 })
+
+            except Exception:
+                pass
 
         await asyncio.sleep(5)
