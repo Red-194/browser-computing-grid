@@ -1,9 +1,9 @@
 import uuid
-
 from datetime import datetime
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
+from .events import notify_dashboards
 from .models import Worker
 from .registry import workers
 
@@ -28,16 +28,20 @@ async def websocket_endpoint(websocket: WebSocket):
             if message["type"] == "register":
 
                 worker = Worker(
-                    uuid= str(uuid.uuid4()),
+                    uuid=str(uuid.uuid4()),
                     ip=websocket.client.host,
                     cores=message["cores"],
                     memory=message["memory"]
                 )
 
+                worker.last_heartbeat = datetime.now()
+
                 workers[worker.uuid] = worker
                 worker_uuid = worker.uuid
 
                 print(f"Registered worker: {worker.uuid}")
+
+                await notify_dashboards()
 
                 await websocket.send_json({
                     "type": "register_ack",
@@ -48,14 +52,21 @@ async def websocket_endpoint(websocket: WebSocket):
 
                 workers[worker_uuid].last_heartbeat = datetime.now()
 
-                print(f"Heartbeat received from {worker_uuid} at {workers[worker_uuid].last_heartbeat}")
-
+                print(
+                    f"Heartbeat received from {worker_uuid} "
+                    f"at {workers[worker_uuid].last_heartbeat}"
+                )
 
     except WebSocketDisconnect:
 
         if worker_uuid is not None:
+
             workers.pop(worker_uuid, None)
+
             print(f"Worker disconnected: {worker_uuid}")
 
+            await notify_dashboards()
+
         else:
+
             print("Unknown worker disconnected.")

@@ -1,53 +1,43 @@
-async function updateWorkers() {
+const table = document.getElementById("workerTable");
 
-    try {
+const source = new EventSource("/events");
 
-        const response = await fetch("/workers");
+source.onmessage = (event) => {
 
-        const workers = await response.json();
+    const workers = JSON.parse(event.data);
 
-        const table = document.getElementById("workerTable");
+    table.innerHTML = "";
 
-        table.innerHTML = "";
+    if (workers.length === 0) {
 
-        if (workers.length === 0) {
+        table.innerHTML = `
+            <tr>
+                <td colspan="5">No workers connected.</td>
+            </tr>
+        `;
 
-            table.innerHTML = `
-                <tr>
-                    <td colspan="5">
-                        No workers connected.
-                    </td>
-                </tr>
-            `;
-
-            return;
-
-        }
-
-        workers.forEach(worker => {
-
-            table.innerHTML += `
-                <tr>
-                    <td>${worker.uuid}</td>
-                    <td>${worker.ip}</td>
-                    <td>${worker.status}</td>
-                    <td>${worker.cores}</td>
-                    <td>${worker.memory}</td>
-                </tr>
-            `;
-
-        });
+        return;
 
     }
 
-    catch (error) {
+    workers.forEach(worker => {
 
-        console.error("Failed to fetch workers:", error);
+        table.innerHTML += `
+            <tr>
+                <td>${worker.uuid}</td>
+                <td>${worker.ip}</td>
+                <td>${worker.status}</td>
+                <td>${worker.cores}</td>
+                <td>${worker.memory}</td>
+            </tr>
+        `;
 
-    }
+    });
 
-}
+};
 
-updateWorkers();
+source.onerror = () => {
 
-setInterval(updateWorkers, 1000);
+    console.log("Lost connection to controller.");
+
+};
