@@ -1,3 +1,5 @@
+import uuid
+
 from datetime import datetime
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
@@ -26,7 +28,7 @@ async def websocket_endpoint(websocket: WebSocket):
             if message["type"] == "register":
 
                 worker = Worker(
-                    uuid=message["uuid"],
+                    uuid= str(uuid.uuid4()),
                     ip=websocket.client.host,
                     cores=message["cores"],
                     memory=message["memory"]
@@ -38,7 +40,8 @@ async def websocket_endpoint(websocket: WebSocket):
                 print(f"Registered worker: {worker.uuid}")
 
                 await websocket.send_json({
-                    "type": "register_ack"
+                    "type": "register_ack",
+                    "uuid": worker.uuid
                 })
 
             elif message["type"] == "heartbeat":
