@@ -59,7 +59,7 @@ socket.onmessage = (event) => {
 
         document.getElementById("status").textContent = "Connected • Idle";
 
-        setInterval(sendHeartbeat, HEARTBEAT_INTERVAL);
+        heartbeatTimer = setInterval(sendHeartbeat, HEARTBEAT_INTERVAL);
 
     }
 

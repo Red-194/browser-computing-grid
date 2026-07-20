@@ -12,7 +12,7 @@ source.onmessage = (event) => {
 
         table.innerHTML = `
             <tr>
-                <td colspan="5">No workers connected.</td>
+                <td colspan="6">No workers connected.</td>
             </tr>
         `;
 
