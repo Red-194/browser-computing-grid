@@ -40,3 +40,15 @@ async def worker(request: Request):
         name="worker.html",
         context={}
     )
+
+
+@router.post("/disconnect/{worker_uuid}")
+async def disconnect(worker_uuid: str):
+
+    worker = workers.get(worker_uuid)
+    if worker is None:
+        return {"success": False}
+
+    await worker.websocket.close()
+
+    return {"success": True}

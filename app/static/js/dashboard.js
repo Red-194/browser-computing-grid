@@ -30,6 +30,11 @@ source.onmessage = (event) => {
                 <td>${worker.cores}</td>
                 <td>${worker.memory}</td>
                 <td>${worker.latency} ms</td>
+                <td>
+                    <button onclick="disconnectWorker('${worker.uuid}')">
+                        Disconnect
+                    </button>
+                </td>
             </tr>
         `;
 
@@ -42,3 +47,15 @@ source.onerror = () => {
     console.log("Lost connection to controller.");
 
 };
+
+async function disconnectWorker(uuid) {
+
+    const response = await fetch(`/disconnect/${uuid}`, {
+        method: "POST"
+    });
+
+    if (!response.ok) {
+        console.log("Disconnect failed");
+    }
+
+}

@@ -10,7 +10,6 @@ from .registry import workers
 
 router = APIRouter()
 
-
 @router.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
 

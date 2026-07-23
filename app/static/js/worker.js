@@ -58,6 +58,7 @@ socket.onmessage = (event) => {
     if (message.type === "register_ack") {
 
         document.getElementById("status").textContent = "Connected • Idle";
+        document.getElementById("uuid").textContent = message.uuid;
 
         heartbeatTimer = setInterval(sendHeartbeat, HEARTBEAT_INTERVAL);
 
