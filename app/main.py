@@ -5,17 +5,23 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
 from .events import router as events_router
-from .ping import ping_workers
+from .monitoring import ping_workers, monitor_heartbeats
 from .routes import router
 from .websocket import router as websocket_router
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-
-    asyncio.create_task(ping_workers())
-
-    yield
+    background_tasks = [
+        asyncio.create_task(ping_workers()),
+        asyncio.create_task(monitor_heartbeats()),
+    ]
+    try:
+        yield
+    finally:
+        for task in background_tasks:
+            task.cancel()
+        await asyncio.gather(*background_tasks, return_exceptions=True)
 
 
 app = FastAPI(

@@ -2,6 +2,8 @@
 
 const cores = navigator.hardwareConcurrency;
 const memory = navigator.deviceMemory ?? 0;
+const browser = navigator.userAgent;
+const os = navigator.platform;
 const HEARTBEAT_INTERVAL = 5000;
 
 let heartbeatTimer = null;
@@ -30,7 +32,6 @@ function sendPong(timestamp) {
     socket.send(JSON.stringify({
 
         type: "pong",
-
         timestamp
 
     }));
@@ -45,7 +46,9 @@ socket.onopen = () => {
 
         type: "register",
         cores,
-        memory
+        memory,
+        os,
+        browser
 
     }));
 

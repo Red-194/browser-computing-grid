@@ -1,3 +1,3 @@
-from .models import Worker
+from .models.worker import Worker
 
 workers: dict[str, Worker] = {}
