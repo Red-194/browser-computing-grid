@@ -47,6 +47,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 worker_uuid = worker.uuid
 
                 print(f"Registered worker: {worker.uuid}")
+                print(f"Worker metadata: {worker.metadata}")
 
                 await notify_dashboards()
 

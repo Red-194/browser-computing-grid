@@ -24,10 +24,12 @@ async def ping_workers():
                     timestamp=time.perf_counter()
                 )
 
-                await worker.websocket.send_json({ping.model_dump()})
+                await worker.websocket.send_json(
+                    ping.model_dump()
+                )
 
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"Failed to ping worker {worker.uuid}: {e}")
 
         await asyncio.sleep(5)
 
@@ -47,7 +49,7 @@ async def monitor_heartbeats():
                 try:
                     await worker.websocket.close()
 
-                except Exception:
-                    pass
+                except Exception as e:
+                    print(f"Failed to close worker {worker.uuid}: {e}")
 
         await asyncio.sleep(1)
