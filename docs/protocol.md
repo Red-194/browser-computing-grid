@@ -239,7 +239,7 @@ Each worker snapshot contains:
 | `status` | `str` | `worker.status` |
 | `cores` | `int` | `worker.cores` |
 | `memory` | `float` | `worker.memory` |
-| `latency` | `float` | `worker.latency` |
+| `latency` | `int` | `worker.latency` |
 
 Example:
 
@@ -251,7 +251,7 @@ Example:
     "status": "idle",
     "cores": 8,
     "memory": 8,
-    "latency": 12.4
+    "latency": 12
   }
 ]
 ```

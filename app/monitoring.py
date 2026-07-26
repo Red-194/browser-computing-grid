@@ -45,17 +45,17 @@ async def monitor_heartbeats():
 
         for worker in list(workers.values()):
 
+            if worker.websocket is None:
+                continue
+
             if now - worker.last_heartbeat > timedelta(seconds=HEARTBEAT_TIMEOUT):
 
                 print(f"Heartbeat timeout: {worker.uuid}")
 
-                if worker.websocket is not None:
-  
-                    try:
-                        await worker.websocket.close()
+                try:
+                    await worker.websocket.close()
 
-
-                    except Exception as e:
-                        print(f"Failed to close worker {worker.uuid}: {e}")
+                except Exception as e:
+                    print(f"Failed to close worker {worker.uuid}: {e}")
 
         await asyncio.sleep(1)

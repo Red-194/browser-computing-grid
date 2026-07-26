@@ -32,7 +32,7 @@ source.onmessage = (event) => {
                 <td>${worker.latency} ms</td>
                 <td>
                     <button onclick="disconnectWorker('${worker.uuid}')">
-                        Disconnect
+                        ${worker.state === "Offline" ? "Remove" : "Disconnect"}
                     </button>
                 </td>
             </tr>

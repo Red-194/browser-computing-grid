@@ -19,7 +19,7 @@ class Worker:
     cores: int
     memory: float
     state: str = WorkerStates.IDLE
-    latency: float = 0.0
+    latency: int = 0
     last_heartbeat: datetime | None = None
     websocket: WebSocket | None = field(default=None, repr=False, compare=False)
     metadata: WorkerMetadata | None = None

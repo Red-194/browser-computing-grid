@@ -1,3 +1,4 @@
+import math
 import time
 from datetime import datetime
 
@@ -97,7 +98,7 @@ async def websocket_endpoint(websocket: WebSocket):
                     continue
 
                 latency = (time.perf_counter() - message.timestamp) * 1000
-                worker.latency = round(latency, 1)
+                worker.latency = math.ceil(latency)
 
                 print(
                     f"Latency {worker.uuid}: "
@@ -114,7 +115,7 @@ async def websocket_endpoint(websocket: WebSocket):
 
             if worker is not None:
                 worker.websocket = None
-                worker.latency = 0.0
+                worker.latency = 0
                 worker.state = WorkerStates.OFFLINE
 
                 print(f"Worker disconnected: {worker.uuid}")

@@ -42,13 +42,22 @@ async def worker(request: Request):
     )
 
 
+from .events import notify_dashboards
+
 @router.post("/disconnect/{worker_uuid}")
 async def disconnect(worker_uuid: str):
 
     worker = workers.get(worker_uuid)
 
-    if worker is None or worker.websocket is None:
+    if worker is None:
         return {"success": False}
 
+    # Offline -> Remove
+    if worker.websocket is None:
+        workers.pop(worker_uuid, None)
+        await notify_dashboards()
+        return {"success": True}
+
+    # Online -> Disconnect
     await worker.websocket.close()
     return {"success": True}
