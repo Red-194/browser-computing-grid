@@ -8,7 +8,7 @@ from .events import router as events_router
 from .monitoring import ping_workers, monitor_heartbeats
 from .routes import router
 from .websocket import router as websocket_router
-
+from .jobs import router as jobs_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -38,3 +38,4 @@ app.mount(
 app.include_router(router)
 app.include_router(websocket_router)
 app.include_router(events_router)
+app.include_router(jobs_router)

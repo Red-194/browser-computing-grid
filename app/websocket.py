@@ -1,12 +1,11 @@
 import time
-import uuid
 from datetime import datetime
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from .events import notify_dashboards
 from .models.protocol import HeartbeatMessage, PongMessage, RegisterAckMessage, RegisterMessage
-from .models.worker import Worker, WorkerMetadata
+from .models.worker import Worker, WorkerMetadata, WorkerStates
 from .registry import workers
 
 router = APIRouter()
@@ -29,21 +28,37 @@ async def websocket_endpoint(websocket: WebSocket):
             if msg_type == "register":
 
                 message = RegisterMessage.model_validate(raw)
+                worker = workers.get(message.uuid)
 
-                worker = Worker(
-                    uuid=str(uuid.uuid4()),
-                    ip=websocket.client.host,
-                    cores=message.cores,
-                    memory=message.memory,
-                    websocket=websocket,
-                    last_heartbeat=datetime.now(),
-                    metadata=WorkerMetadata(
-                        os=message.os,
-                        browser=message.browser
+                if worker is not None:
+                    worker.websocket = websocket
+                    worker.ip = websocket.client.host
+                    worker.cores = message.cores
+                    worker.memory = message.memory
+                    worker.last_heartbeat = datetime.now()
+                    worker.metadata = WorkerMetadata(
+                        browser=message.browser,
+                        os=message.os
                     )
-                )
+                    worker.state = WorkerStates.IDLE
 
-                workers[worker.uuid] = worker
+                else:
+                    worker = Worker(
+                        uuid=message.uuid,
+                        websocket=websocket,
+                        ip=websocket.client.host,
+                        cores=message.cores,
+                        memory=message.memory,
+                        last_heartbeat=datetime.now(),
+                        metadata=WorkerMetadata(
+                            browser=message.browser,
+                            os=message.os
+                        ),
+                        state=WorkerStates.IDLE
+                    )
+
+                    workers[worker.uuid] = worker
+                
                 worker_uuid = worker.uuid
 
                 print(f"Registered worker: {worker.uuid}")
@@ -53,7 +68,8 @@ async def websocket_endpoint(websocket: WebSocket):
 
                 ack = RegisterAckMessage(
                     type="register_ack",
-                    uuid=worker.uuid
+                    uuid=worker.uuid,
+                    state=worker.state
                 )
 
                 await websocket.send_json(ack.model_dump())
@@ -93,9 +109,16 @@ async def websocket_endpoint(websocket: WebSocket):
     except WebSocketDisconnect:
 
         if worker_uuid is not None:
-            workers.pop(worker_uuid, None)
-            print(f"Worker disconnected: {worker_uuid}")
-            await notify_dashboards()
+
+            worker = workers.get(worker_uuid)
+
+            if worker is not None:
+                worker.websocket = None
+                worker.latency = 0.0
+                worker.state = WorkerStates.OFFLINE
+
+                print(f"Worker disconnected: {worker.uuid}")
+                await notify_dashboards()
 
         else:
             print("Unknown worker disconnected.")

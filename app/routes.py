@@ -46,9 +46,9 @@ async def worker(request: Request):
 async def disconnect(worker_uuid: str):
 
     worker = workers.get(worker_uuid)
-    if worker is None:
+
+    if worker is None or worker.websocket is None:
         return {"success": False}
 
     await worker.websocket.close()
-
     return {"success": True}

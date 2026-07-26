@@ -26,7 +26,7 @@ source.onmessage = (event) => {
             <tr>
                 <td>${worker.uuid}</td>
                 <td>${worker.ip}</td>
-                <td>${worker.status}</td>
+                <td>${worker.state}</td>
                 <td>${worker.cores}</td>
                 <td>${worker.memory}</td>
                 <td>${worker.latency} ms</td>

@@ -2,7 +2,10 @@ import asyncio
 import time
 from datetime import datetime, timedelta
 
+from app.events import notify_dashboards
+
 from .models.protocol import PingMessage
+from .models.worker import WorkerStates
 from .registry import workers
 
 HEARTBEAT_TIMEOUT = 15
@@ -46,10 +49,13 @@ async def monitor_heartbeats():
 
                 print(f"Heartbeat timeout: {worker.uuid}")
 
-                try:
-                    await worker.websocket.close()
+                if worker.websocket is not None:
+  
+                    try:
+                        await worker.websocket.close()
 
-                except Exception as e:
-                    print(f"Failed to close worker {worker.uuid}: {e}")
+
+                    except Exception as e:
+                        print(f"Failed to close worker {worker.uuid}: {e}")
 
         await asyncio.sleep(1)

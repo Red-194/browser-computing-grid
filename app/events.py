@@ -17,7 +17,7 @@ async def notify_dashboards():
         {
             "uuid": worker.uuid,
             "ip": worker.ip,
-            "status": worker.status,
+            "state": worker.state,
             "cores": worker.cores,
             "memory": worker.memory,
             "latency": worker.latency
