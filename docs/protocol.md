@@ -1,5 +1,7 @@
 # Communication Protocol
 
+> See also: [architecture.md](architecture.md) · [validation.md](validation.md)
+
 This document specifies the wire protocol used between the three parties in the system:
 
 - **Worker** (`worker.js`) — a browser tab that volunteers compute resources
