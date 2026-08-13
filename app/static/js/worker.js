@@ -21,7 +21,15 @@ function getWorkerUUID() {
 
     let uuid = localStorage.getItem("worker-id");
     if (!uuid) {
-        uuid = crypto.randomUUID();
+        if (crypto.randomUUID) {
+            uuid = crypto.randomUUID();
+        } else {
+            // Fallback for non-secure contexts (HTTP) where randomUUID is undefined
+            uuid = 'xxxx-xxxx-xxxx-xxxx'.replace(/[x]/g, function(c) {
+                const r = Math.random() * 16 | 0;
+                return r.toString(16);
+            });
+        }
         localStorage.setItem("worker-id", uuid);
 
     }
