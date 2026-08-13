@@ -1,2 +1,7 @@
 venv/
 __pycache__/
+
+# Rust / WASM
+runtime/target/
+runtime/pkg/
+**/*.rs.bk
