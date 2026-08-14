@@ -35,6 +35,12 @@ app.mount(
     name="static"
 )
 
+app.mount(
+    "/runtime",
+    StaticFiles(directory="runtime/pkg"),
+    name="runtime"
+)
+
 app.include_router(router)
 app.include_router(websocket_router)
 app.include_router(events_router)

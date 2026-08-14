@@ -1,3 +1,4 @@
+import init, { execute_task } from "/runtime/runtime.js";
 const cores = navigator.hardwareConcurrency;
 const memory = navigator.deviceMemory ?? 0;
 const browser = navigator.userAgent;
@@ -13,6 +14,7 @@ document.getElementById("cores").textContent = cores;
 document.getElementById("memory").textContent = memory + " GB";
 document.getElementById("uuid").textContent = workerUUID;
 
+let wasmReady = false;
 let socket = null;
 
 function connect() {
@@ -125,4 +127,11 @@ function sendPong(timestamp) {
 
 }
 
+async function initializeWasm() {
+    await init();
+    wasmReady = true;
+    console.log("WASM runtime initialized.");
+}
+
 connect();
+initializeWasm();
