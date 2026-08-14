@@ -10,12 +10,9 @@ class MonteCarloSplitter:
 
     @staticmethod
     def split(
-        job: MonteCarloJob,
-        num_tasks: int,
-    ) -> list[Task]:
+        job: MonteCarloJob) -> list[Task]:
 
-        if num_tasks <= 0:
-            raise ValueError("num_tasks must be greater than zero")
+        num_tasks = 4
 
         total_samples = job.config.samples
 

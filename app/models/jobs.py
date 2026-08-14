@@ -1,4 +1,5 @@
 from typing import Annotated, Literal
+from uuid import UUID
 
 from pydantic import BaseModel, Field
 
@@ -27,16 +28,19 @@ class MandelbrotConfig(BaseModel):
 
 
 class MonteCarloJob(BaseModel):
+    job_id: UUID | None = None
     workload: Literal["monte_carlo"]
     config: MonteCarloConfig
 
 
 class MatrixMultiplyJob(BaseModel):
+    job_id: UUID | None = None
     workload: Literal["matrix_multiply"]
     config: MatrixMultiplyConfig
 
 
 class MandelbrotJob(BaseModel):
+    job_id: UUID | None = None
     workload: Literal["mandelbrot"]
     config: MandelbrotConfig
 
