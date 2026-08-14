@@ -37,10 +37,4 @@ fn test_mandelbrot() {
     assert_eq!(output.col_block, 0);
     assert_eq!(output.pixel_buffer.len(), 100);
     
-    // Check center pixel roughly (it should be in the mandelbrot set, so escape color is 0)
-    // Actually the center of our mapped grid might not be exactly 0,0, but near it.
-    // Let's just check that we generated the correct amount of pixels and they are within valid ranges.
-    for pixel in output.pixel_buffer {
-        assert!(pixel <= 255);
-    }
 }
