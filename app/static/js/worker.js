@@ -13,9 +13,72 @@ document.getElementById("cores").textContent = cores;
 document.getElementById("memory").textContent = memory + " GB";
 document.getElementById("uuid").textContent = workerUUID;
 
-const socket = new WebSocket(
-    `ws://${window.location.host}/ws`
-);
+let socket = null;
+
+function connect() {
+    socket = new WebSocket(
+        `ws://${window.location.host}/ws`
+    );
+
+    socket.onopen = () => {
+
+        document.getElementById("state").textContent = "Registering...";
+
+        socket.send(JSON.stringify({
+
+            type: "register",
+            uuid: workerUUID,
+            cores,
+            memory,
+            os,
+            browser
+
+        }));
+
+    };
+
+
+    socket.onmessage = (event) => {
+
+        const message = JSON.parse(event.data);
+
+        if (message.type === "register_ack") {
+
+            document.getElementById("state").textContent =  `Connected • ${message.state}`;
+
+            heartbeatTimer = setInterval(
+                sendHeartbeat,
+                HEARTBEAT_INTERVAL
+            );
+
+        }
+
+        else if (message.type === "ping") {
+
+            sendPong(message.timestamp);
+
+        }
+
+    };
+
+    socket.onclose = () => {
+
+        clearInterval(heartbeatTimer);
+        document.getElementById("state").textContent = "Disconnected";
+
+        setTimeout(() => {
+            connect();
+        }, 3000);
+
+    };
+
+    socket.onerror = () => {
+
+        document.getElementById("state").textContent = "Connection Error";
+
+    };
+
+}
 
 function getWorkerUUID() {
 
@@ -62,55 +125,4 @@ function sendPong(timestamp) {
 
 }
 
-socket.onopen = () => {
-
-    document.getElementById("state").textContent = "Registering...";
-
-    socket.send(JSON.stringify({
-
-        type: "register",
-        uuid: workerUUID,
-        cores,
-        memory,
-        os,
-        browser
-
-    }));
-
-};
-
-socket.onmessage = (event) => {
-
-    const message = JSON.parse(event.data);
-
-    if (message.type === "register_ack") {
-
-        document.getElementById("state").textContent =  `Connected • ${message.state}`;
-
-        heartbeatTimer = setInterval(
-            sendHeartbeat,
-            HEARTBEAT_INTERVAL
-        );
-
-    }
-
-    else if (message.type === "ping") {
-
-        sendPong(message.timestamp);
-
-    }
-
-};
-
-socket.onclose = () => {
-
-    clearInterval(heartbeatTimer);
-    document.getElementById("state").textContent = "Disconnected";
-
-};
-
-socket.onerror = () => {
-
-    document.getElementById("state").textContent = "Connection Error";
-
-};
+connect();
