@@ -1,5 +1,3 @@
-import init, { execute_task } from "/runtime/runtime.js";
-
 const cores = navigator.hardwareConcurrency;
 const memory = navigator.deviceMemory ?? 0;
 const browser = navigator.userAgent;
@@ -10,22 +8,97 @@ const HEARTBEAT_INTERVAL = 5000;
 const workerUUID = getWorkerUUID();
 
 let heartbeatTimer = null;
+let socket = null;
+
+const computeWorker = new Worker(
+    "/static/js/compute-worker.js",
+    { type: "module" }
+);
 
 document.getElementById("cores").textContent = cores;
 document.getElementById("memory").textContent = memory + " GB";
 document.getElementById("uuid").textContent = workerUUID;
 
-let wasmReady = false;
-let socket = null;
+
+/*
+ * Compute worker → main worker
+ *
+ * The compute worker performs the synchronous WASM execution.
+ * This thread remains responsible for WebSocket communication
+ * and heartbeat handling.
+ */
+computeWorker.onmessage = (event) => {
+
+    const message = event.data;
+
+    if (message.type === "ready") {
+
+        console.log("Compute worker ready.");
+        return;
+    }
+
+    if (message.type === "result") {
+
+        const task = message.task;
+        const result = message.result;
+
+        console.log("Task result:", result);
+
+        if (socket?.readyState === WebSocket.OPEN) {
+
+            socket.send(JSON.stringify({
+                type: "task_result",
+                job_id: task.job_id,
+                task_id: task.task_id,
+                result: {
+                    row_block: result.row_block,
+                    col_block: result.col_block,
+                    pixel_buffer: result.pixel_buffer
+                },
+                execution_time_ms: message.execution_time_ms
+            }));
+
+        }
+
+        return;
+    }
+
+    if (message.type === "error") {
+
+        console.error(
+            `Task ${message.task_id} failed:`,
+            message.error
+        );
+
+        return;
+    }
+
+    if (message.type === "init_error") {
+
+        console.error(
+            "WASM runtime initialization failed:",
+            message.error
+        );
+
+    }
+
+};
+
+
+/*
+ * Controller WebSocket
+ */
 
 function connect() {
+
     socket = new WebSocket(
         `ws://${window.location.host}/ws`
     );
 
     socket.onopen = () => {
 
-        document.getElementById("state").textContent = "Registering...";
+        document.getElementById("state").textContent =
+            "Registering...";
 
         socket.send(JSON.stringify({
 
@@ -47,7 +120,10 @@ function connect() {
 
         if (message.type === "register_ack") {
 
-            document.getElementById("state").textContent =  `Connected • ${message.state}`;
+            document.getElementById("state").textContent =
+                `Connected • ${message.state}`;
+
+            clearInterval(heartbeatTimer);
 
             heartbeatTimer = setInterval(
                 sendHeartbeat,
@@ -64,51 +140,34 @@ function connect() {
 
         else if (message.type === "task") {
 
-            console.log("Task received:", message.task);
+            console.log(
+                "Task received:",
+                message.task
+            );
 
-            const task = message.task;
+            /*
+             * Do NOT execute WASM here.
+             *
+             * Send the task to the dedicated compute worker.
+             */
+            computeWorker.postMessage({
 
-            try {
+                type: "execute",
+                task: message.task
 
-                const startTime = performance.now();
-
-                const result = execute_task(
-                    task.workload,
-                    task.config
-                );
-
-                const executionTime = performance.now() - startTime;
-
-                console.log("Task result:", result);
-
-                socket.send(JSON.stringify({
-                    type: "task_result",
-                    job_id: task.job_id,
-                    task_id: task.task_id,
-                    result: {
-                        row_block: result.row_block,
-                        col_block: result.col_block,
-                        pixel_buffer: result.pixel_buffer
-                    },
-                    execution_time_ms: executionTime
-                }));
-
-            } catch (error) {
-
-                console.error(
-                    `Task ${task.task_id} failed:`,
-                    error
-                );
-
-            }
+            });
 
         }
+
     };
+
 
     socket.onclose = () => {
 
         clearInterval(heartbeatTimer);
-        document.getElementById("state").textContent = "Disconnected";
+
+        document.getElementById("state").textContent =
+            "Disconnected";
 
         setTimeout(() => {
             connect();
@@ -116,28 +175,52 @@ function connect() {
 
     };
 
+
     socket.onerror = () => {
 
-        document.getElementById("state").textContent = "Connection Error";
+        document.getElementById("state").textContent =
+            "Connection Error";
 
     };
 
 }
 
+
+/*
+ * Persistent worker UUID
+ */
+
 function getWorkerUUID() {
 
     let uuid = localStorage.getItem("worker-id");
+
     if (!uuid) {
+
         if (crypto.randomUUID) {
+
             uuid = crypto.randomUUID();
+
         } else {
-            // Fallback for non-secure contexts (HTTP) where randomUUID is undefined
-            uuid = 'xxxx-xxxx-xxxx-xxxx'.replace(/[x]/g, function(c) {
-                const r = Math.random() * 16 | 0;
-                return r.toString(16);
-            });
+
+            // Fallback for non-secure contexts
+            // where randomUUID is unavailable.
+
+            uuid =
+                "xxxx-xxxx-xxxx-xxxx".replace(
+                    /[x]/g,
+                    function(c) {
+                        const r =
+                            Math.random() * 16 | 0;
+
+                        return r.toString(16);
+                    }
+                );
         }
-        localStorage.setItem("worker-id", uuid);
+
+        localStorage.setItem(
+            "worker-id",
+            uuid
+        );
 
     }
 
@@ -145,9 +228,17 @@ function getWorkerUUID() {
 
 }
 
+
+/*
+ * Heartbeat
+ */
+
 function sendHeartbeat() {
 
-    if (socket.readyState === WebSocket.OPEN) {
+    if (
+        socket &&
+        socket.readyState === WebSocket.OPEN
+    ) {
 
         socket.send(JSON.stringify({
             type: "heartbeat"
@@ -157,9 +248,18 @@ function sendHeartbeat() {
 
 }
 
+
+/*
+ * Pong
+ */
+
 function sendPong(timestamp) {
 
-    if (socket.readyState === WebSocket.OPEN) {
+    if (
+        socket &&
+        socket.readyState === WebSocket.OPEN
+    ) {
+
         socket.send(JSON.stringify({
             type: "pong",
             timestamp
@@ -169,11 +269,5 @@ function sendPong(timestamp) {
 
 }
 
-async function initializeWasm() {
-    await init();
-    wasmReady = true;
-    console.log("WASM runtime initialized.");
-}
 
 connect();
-initializeWasm();
