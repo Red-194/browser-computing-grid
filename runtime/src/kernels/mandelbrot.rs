@@ -22,31 +22,50 @@ pub struct MandelbrotOutput {
 }
 
 pub fn run(input: MandelbrotInput) -> MandelbrotOutput {
-    let mut pixel_buffer = Vec::with_capacity((input.width * input.height) as usize);
-    let dx = (input.x_max - input.x_min) / (input.width as f64);
-    let dy = (input.y_max - input.y_min) / (input.height as f64);
+    let start_x = input.col_block * input.tile_size;
+    let start_y = input.row_block * input.tile_size;
 
-    for j in 0..input.height {
-        for i in 0..input.width {
-            let cx = input.x_min + (i as f64) * dx;
-            let cy = input.y_min + (j as f64) * dy;
-            
+    let tile_width = input
+        .tile_size
+        .min(input.width.saturating_sub(start_x));
+
+    let tile_height = input
+        .tile_size
+        .min(input.height.saturating_sub(start_y));
+
+    let mut pixel_buffer =
+        Vec::with_capacity((tile_width * tile_height) as usize);
+
+    let dx = (input.x_max - input.x_min) / input.width as f64;
+    let dy = (input.y_max - input.y_min) / input.height as f64;
+
+    for y in 0..tile_height {
+        for x in 0..tile_width {
+            let global_x = start_x + x;
+            let global_y = start_y + y;
+
+            let cx = input.x_min + (global_x as f64) * dx;
+            let cy = input.y_min + (global_y as f64) * dy;
+
             let mut zx = 0.0;
             let mut zy = 0.0;
             let mut iteration = 0;
-            
-            while zx * zx + zy * zy <= 4.0 && iteration < input.max_iterations {
+
+            while zx * zx + zy * zy <= 4.0
+                && iteration < input.max_iterations
+            {
                 let temp_zx = zx * zx - zy * zy + cx;
                 zy = 2.0 * zx * zy + cy;
                 zx = temp_zx;
                 iteration += 1;
             }
-            
+
             let color = if iteration == input.max_iterations {
                 0
             } else {
                 ((iteration as f64 / input.max_iterations as f64) * 255.0) as u8
             };
+
             pixel_buffer.push(color);
         }
     }

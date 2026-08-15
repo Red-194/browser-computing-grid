@@ -7,10 +7,29 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from .events import notify_dashboards
 from .models.protocol import HeartbeatMessage, PongMessage, RegisterAckMessage, RegisterMessage
 from .models.worker import Worker, WorkerMetadata, WorkerStates
-from .registry import workers
+from .registry import workers, aggregators, task_counts, completed_jobs
 
 router = APIRouter()
 
+async def send_task(worker, task):
+    if worker.websocket is None:
+        return False
+
+    try:
+        await worker.websocket.send_json({
+            "type": "task",
+            "task": task.model_dump(mode="json")
+        })
+
+        return True
+
+    except Exception as e:
+        print(
+            f"Failed to send task {task.task_id} "
+            f"to worker {worker.uuid}: {e}"
+        )
+
+        return False
 
 @router.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
@@ -106,6 +125,33 @@ async def websocket_endpoint(websocket: WebSocket):
                 )
 
                 await notify_dashboards()
+
+            elif msg_type == "task_result":
+
+                job_id = raw["job_id"]
+                task_id = raw["task_id"]
+
+                aggregator = aggregators.get(str(job_id))
+
+                if aggregator is None:
+                    print(f"No aggregator found for job {job_id}")
+                    continue
+
+                aggregator.add_result(raw["result"])
+                total_tasks = task_counts.get(str(job_id))
+
+                print(
+                    f"Task result received: "
+                    f"job={job_id} "
+                    f"task={task_id} "
+                    f"execution_time={raw['execution_time_ms']} ms"
+                )
+
+                if aggregator.is_complete(total_tasks):
+                    completed_jobs.add(str(job_id))
+
+                    print(f"Job {job_id} aggregation complete.")
+
 
     except WebSocketDisconnect:
 

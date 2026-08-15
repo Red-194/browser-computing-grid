@@ -1,4 +1,5 @@
 import init, { execute_task } from "/runtime/runtime.js";
+
 const cores = navigator.hardwareConcurrency;
 const memory = navigator.deviceMemory ?? 0;
 const browser = navigator.userAgent;
@@ -61,6 +62,47 @@ function connect() {
 
         }
 
+        else if (message.type === "task") {
+
+            console.log("Task received:", message.task);
+
+            const task = message.task;
+
+            try {
+
+                const startTime = performance.now();
+
+                const result = execute_task(
+                    task.workload,
+                    task.config
+                );
+
+                const executionTime = performance.now() - startTime;
+
+                console.log("Task result:", result);
+
+                socket.send(JSON.stringify({
+                    type: "task_result",
+                    job_id: task.job_id,
+                    task_id: task.task_id,
+                    result: {
+                        row_block: result.row_block,
+                        col_block: result.col_block,
+                        pixel_buffer: result.pixel_buffer
+                    },
+                    execution_time_ms: executionTime
+                }));
+
+            } catch (error) {
+
+                console.error(
+                    `Task ${task.task_id} failed:`,
+                    error
+                );
+
+            }
+
+        }
     };
 
     socket.onclose = () => {

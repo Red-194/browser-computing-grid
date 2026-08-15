@@ -1,7 +1,7 @@
-from typing import Annotated, Literal
+from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 
 class MonteCarloConfig(BaseModel):
@@ -27,25 +27,7 @@ class MandelbrotConfig(BaseModel):
     tile_size: int
 
 
-class MonteCarloJob(BaseModel):
+class JobSubmission(BaseModel):
     job_id: UUID | None = None
-    workload: Literal["monte_carlo"]
-    config: MonteCarloConfig
-
-
-class MatrixMultiplyJob(BaseModel):
-    job_id: UUID | None = None
-    workload: Literal["matrix_multiply"]
-    config: MatrixMultiplyConfig
-
-
-class MandelbrotJob(BaseModel):
-    job_id: UUID | None = None
-    workload: Literal["mandelbrot"]
-    config: MandelbrotConfig
-
-
-JobSubmission = Annotated[
-    MonteCarloJob | MatrixMultiplyJob | MandelbrotJob,
-    Field(discriminator="workload")
-]
+    workload: str
+    config: dict[str, Any]
