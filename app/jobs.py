@@ -6,13 +6,14 @@ from fastapi import APIRouter, Response
 from .models.jobs import JobSubmission
 from .services.loader import get_splitter, get_aggregator
 from .services.scheduler.round_robin import RoundRobinScheduler
+from .services.scheduler.random import RandomScheduler
 from .registry import workers, aggregators, task_counts, completed_jobs, job_start_times
 from .websocket import send_task
 
 router = APIRouter(prefix="/jobs", tags=["Jobs"])
 
 # Current scheduler mode
-scheduler = RoundRobinScheduler()
+scheduler = RandomScheduler()
 
 @router.post("")
 async def submit(job: JobSubmission):
