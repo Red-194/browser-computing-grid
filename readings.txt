@@ -1,0 +1,8 @@
+Round Robin
+3 heterogeneous workers
+8192×8192 Mandelbrot
+4096 tasks
+────────────────────────
+102.641 s → 43.731 s
+2.35× speedup
+78.3% efficiency

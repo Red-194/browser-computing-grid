@@ -7,7 +7,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from .events import notify_dashboards
 from .models.protocol import HeartbeatMessage, PongMessage, RegisterAckMessage, RegisterMessage
 from .models.worker import Worker, WorkerMetadata, WorkerStates
-from .registry import workers, aggregators, task_counts, completed_jobs
+from .registry import workers, aggregators, task_counts, completed_jobs, job_start_times
 
 router = APIRouter()
 
@@ -148,9 +148,15 @@ async def websocket_endpoint(websocket: WebSocket):
                 )
 
                 if aggregator.is_complete(total_tasks):
-                    completed_jobs.add(str(job_id))
 
+                    elapsed = (
+                        time.perf_counter()
+                        - job_start_times[str(job_id)]
+                    )
+                    completed_jobs.add(str(job_id))
                     print(f"Job {job_id} aggregation complete.")
+                    print(f"Total execution time: {elapsed:.3f} seconds")
+
 
 
     except WebSocketDisconnect:

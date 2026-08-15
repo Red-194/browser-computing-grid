@@ -1,11 +1,12 @@
 from uuid import uuid4, UUID
+import time
 
 from fastapi import APIRouter, Response
 
 from .models.jobs import JobSubmission
 from .services.loader import get_splitter, get_aggregator
 from .services.scheduler.round_robin import RoundRobinScheduler
-from .registry import workers, aggregators, task_counts, completed_jobs
+from .registry import workers, aggregators, task_counts, completed_jobs, job_start_times
 from .websocket import send_task
 
 router = APIRouter(prefix="/jobs", tags=["Jobs"])
@@ -18,6 +19,7 @@ async def submit(job: JobSubmission):
 
     job_id = uuid4()
     job.job_id = job_id
+    job_start_times[str(job_id)] = time.perf_counter()
 
     splitter = get_splitter(job.workload)
     tasks = splitter.split(job)
