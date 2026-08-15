@@ -1,11 +1,20 @@
+from io import BytesIO
+
+from PIL import Image
+
+
 class MandelbrotAggregator:
 
-    def __init__(self, config):
-        self.width = config["width"]
-        self.height = config["height"]
-        self.tile_size = config["tile_size"]
+    result_type = "image/png"
 
-        self.buffer = bytearray(self.width * self.height)
+    def __init__(self, config):
+        self.width = config.width
+        self.height = config.height
+        self.tile_size = config.tile_size
+
+        self.buffer = bytearray(
+            self.width * self.height
+        )
 
         self.completed_tasks = 0
 
@@ -53,5 +62,14 @@ class MandelbrotAggregator:
     def is_complete(self, total_tasks):
         return self.completed_tasks == total_tasks
 
-    def get_image(self):
-        return bytes(self.buffer)
+    def get_result(self):
+        image = Image.frombytes(
+            "L",
+            (self.width, self.height),
+            bytes(self.buffer),
+        )
+
+        output = BytesIO()
+        image.save(output, format="PNG")
+
+        return output.getvalue()

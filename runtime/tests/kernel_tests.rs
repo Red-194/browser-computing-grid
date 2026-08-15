@@ -1,20 +1,4 @@
-use runtime::kernels::monte_carlo::{self, MonteCarloInput};
 use runtime::kernels::mandelbrot::{self, MandelbrotInput};
-
-#[test]
-fn test_monte_carlo() {
-    let input = MonteCarloInput {
-        samples: 10_000,
-        seed: 42,
-    };
-    
-    let output = monte_carlo::run(input);
-    
-    assert_eq!(output.samples, 10_000);
-    // 42 is an arbitrary seed, inside_circle should be somewhere near 10_000 * (pi / 4) ≈ 7853
-    let pi_estimate = 4.0 * (output.inside_circle as f64) / (output.samples as f64);
-    assert!(pi_estimate > 3.0 && pi_estimate < 3.3);
-}
 
 #[test]
 fn test_mandelbrot() {

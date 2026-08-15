@@ -1,133 +1,159 @@
 # Browser Computing Grid
 
-A zero-install, browser-native distributed computing grid. Browser tabs volunteer CPU and memory as worker nodes; a FastAPI controller coordinates registration, health monitoring, and (planned) workload dispatch; an admin dashboard observes the live grid over Server-Sent Events.
+A zero-install, browser-native distributed computing system. Browser tabs volunteer CPU as **workers**; a FastAPI **controller** splits a submitted job into tasks, schedules them across connected workers, collects the results, and reassembles a final answer. Each task executes inside a WebAssembly **runtime** compiled from Rust, running directly in the worker's browser tab — no native install, no drivers, no client software.
 
-This repository implements **Phase 1** of a final-year project — worker lifecycle management, heartbeat monitoring, latency measurement, and job payload validation. Task dispatch, scheduling, WebAssembly execution, and fault recovery are planned in later phases. See [docs/scope.md](docs/scope.md) for the full roadmap.
+## What problem it solves
 
-## Features (implemented)
+Distributed / volunteer computing normally requires installing a client (BOINC, Folding@home-style agents, etc.), which limits who can participate and adds administrative friction. Browser Computing Grid removes that barrier: a device joins the grid by opening a webpage at `/worker` and stays a worker for as long as that tab is open. Work runs sandboxed inside the browser's WASM engine — nothing is installed, and nothing outlives the tab.
 
-| Area | Status |
-|------|--------|
-| Worker registration & reconnect (UUID upsert) | Done |
-| Heartbeat monitoring & timeout (15 s) | Done |
-| Latency measurement (ping/pong) | Done |
-| Live dashboard (SSE) | Done |
-| Worker disconnect / remove | Done |
-| Job submission API (validation only) | Partial |
-| Task decomposition (splitters) | Code present, not wired |
-| Scheduler & worker task execution | Not started |
+## How it works, at a glance
 
-## Quick start
+```
+Client              Controller (FastAPI)                Worker (browser tab)
+  │                        │                                    │
+  │   POST /jobs           │                                    │
+  ├───────────────────────►│                                    │
+  │                        │  job → splitter → tasks             │
+  │                        │  tasks → scheduler → assignments    │
+  │                        │                                    │
+  │                        │──── task (WebSocket /ws) ──────────►│
+  │                        │                                    │  WASM runtime
+  │                        │                                    │  executes kernel
+  │                        │◄─── task_result (WebSocket) ────────│
+  │                        │                                    │
+  │                        │  aggregator.add_result(...)        │
+  │                        │  (repeats until job complete)       │
+  │                        │                                    │
+  │   GET /jobs/{id}/result│                                    │
+  ├───────────────────────►│                                    │
+  │◄─── final result ──────┤                                    │
+```
+
+A **dashboard** at `/dashboard` (localhost only) watches the worker registry live over Server-Sent Events.
+
+## What makes this different from just running a local program
+
+The computation is decomposed into many small, independent tasks and physically executed across whichever browser tabs happen to be connected at the time — potentially many separate, heterogeneous machines — rather than on one process on one machine. Workers can join and leave (tab closed, network drop) without the controller process going down; the registry just marks them offline. None of this requires the participating devices to trust or install anything beyond a browser tab.
+
+## Major components
+
+| Component | Where | Role |
+|---|---|---|
+| **Controller** | `app/` (FastAPI) | Registers workers, accepts job submissions, runs the splitter/scheduler/aggregator pipeline, serves the dashboard feed |
+| **Worker** | `app/static/js/worker.js` + `app/templates/worker.html` | Browser tab: registers over WebSocket, receives tasks, runs them in WASM, reports results |
+| **Runtime** | `runtime/` (Rust → WASM, via `wasm-bindgen`) | Sandboxed compute engine loaded into the worker tab; exposes `execute_task(workload, config)`, dispatching to a per-workload **kernel** |
+| **Dashboard** | `app/templates/dashboard.html` + `app/static/js/dashboard.js` | Localhost-only live view of connected workers over SSE |
+
+See [docs/architecture.md](docs/architecture.md) for the full breakdown of every module.
+
+## Current workload: Mandelbrot
+
+The job/task pipeline is designed to be workload-agnostic: a job carries a typed, workload-specific config; a **splitter** turns a job into tasks; a WASM **kernel** executes each task; and an **aggregator** combines task results back into a final job result. All three are resolved dynamically by workload name (`app/services/loader.py`).
+
+Today, **Mandelbrot is the only implemented workload**, and it is the reference/demo workload for the whole pipeline:
+
+| Workload | Job/task config | Splitter | WASM kernel | Aggregator | Status |
+|---|---|---|---|---|---|
+| `mandelbrot` | ✅ (`MandelbrotConfig` / `MandelbrotTaskConfig`) | ✅ | ✅ | ✅ | **Fully working end-to-end** |
+
+Other workloads (e.g. Monte Carlo, matrix multiplication) are **not currently implemented** — there is no job model, splitter, kernel, or aggregator for them in this codebase. The extension points that would let a future workload be added without redesigning the pipeline are described in [docs/architecture.md](docs/architecture.md).
+
+## Scheduler
+
+The controller currently ships one scheduler: **Round Robin**, which assigns tasks to `IDLE` workers in rotation. Capability-aware and adaptive (multi-armed-bandit) scheduling are researched and planned — see [docs/scope_updated.md](docs/scope_updated.md) — but are not implemented yet.
+
+## Result model
+
+A job's result is retrieved generically: the controller looks up the job's aggregator and returns `aggregator.get_result()` with media type `aggregator.result_type`. The controller does not know or care that the current aggregator happens to produce a PNG — that logic (pixel-buffer reconstruction and PNG encoding) lives entirely inside `MandelbrotAggregator`. A future workload's aggregator would return a different result type without any change to the result endpoint.
+
+## Install & run
 
 ### Prerequisites
 
 - Python 3.12+
+- Rust + `wasm-bindgen`, only if you need to rebuild the runtime (a prebuilt `runtime/pkg/` is already checked in and is what the app serves)
 - A modern browser (Chrome, Firefox, Edge)
 
-### Install & run
+### Install dependencies
 
 ```bash
 python -m venv venv
 source venv/bin/activate        # Windows: venv\Scripts\activate
 pip install -r requirements.txt
+```
+
+### Start the controller
+
+```bash
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-### Use the grid
+### Connect a browser worker
 
-1. **Dashboard** (localhost only): open [http://127.0.0.1:8000/dashboard](http://127.0.0.1:8000/dashboard)
-2. **Worker** (any device on the network): open [http://&lt;controller-ip&gt;:8000/worker](http://127.0.0.1:8000/worker)
-3. Workers appear in the dashboard table within a few seconds (after ping/pong completes).
+Open `http://<controller-ip>:8000/worker` in any browser on the network (the controller's own machine can use `127.0.0.1`). The tab registers itself over `/ws`, and appears in the dashboard within a few seconds.
 
-Remote clients hitting `/` or `/dashboard` are redirected to `/worker`. The dashboard is restricted to `127.0.0.1` / `::1` via `is_localhost()`.
+### Watch the grid
 
-## Project layout
+Open `http://127.0.0.1:8000/dashboard` (localhost only — remote requests to `/` or `/dashboard` are redirected to `/worker` instead).
 
-```
-browser-computing-grid/
-├── app/
-│   ├── main.py              # FastAPI app, lifespan, static mount
-│   ├── routes.py            # Page routes + worker disconnect
-│   ├── websocket.py         # Worker WebSocket handler
-│   ├── events.py            # SSE fan-out to dashboards
-│   ├── monitoring.py        # Ping loop + heartbeat timeout
-│   ├── jobs.py              # REST job endpoints (placeholders)
-│   ├── registry.py          # In-memory worker store
-│   ├── models/
-│   │   ├── worker.py        # Worker dataclass & states
-│   │   ├── protocol.py      # WebSocket message schemas
-│   │   ├── jobs.py          # Job submission schemas
-│   │   └── tasks.py         # Decomposed task schemas
-│   ├── workloads/
-│   │   ├── monte_carlo/splitter.py
-│   │   ├── matrix/splitter.py
-│   │   └── mandelbrot/splitter.py
-│   ├── services/request_utils.py
-│   ├── templates/           # Jinja2 HTML (dashboard, worker)
-│   └── static/              # CSS + client JS
-├── docs/
-│   ├── architecture.md      # System design & module map
-│   ├── protocol.md          # Wire protocol specification
-│   ├── scope.md             # Project scope & timeline
-│   └── validation.md        # Validation report
-├── requirements.txt
-└── LICENSE
-```
-
-## API overview
-
-| Endpoint | Method | Purpose |
-|----------|--------|---------|
-| `/` | GET | Redirect: localhost → dashboard, else → worker |
-| `/dashboard` | GET | Admin dashboard (localhost only) |
-| `/worker` | GET | Worker node page |
-| `/ws` | WebSocket | Worker registration, heartbeat, ping/pong |
-| `/events` | GET (SSE) | Live worker snapshot stream |
-| `/disconnect/{uuid}` | POST | Disconnect online worker or remove offline row |
-| `/jobs` | POST | Submit a job (validates payload, no dispatch yet) |
-| `/jobs` | GET | List jobs (placeholder) |
-| `/jobs/{id}` | GET | Get job status (placeholder) |
-| `/jobs/{id}/result` | GET | Get job result (placeholder) |
-| `/jobs/{id}` | DELETE | Cancel job (placeholder) |
-
-Full message schemas and timing constants are documented in [docs/protocol.md](docs/protocol.md).
-
-### Example job submission
+### Submit a job
 
 ```bash
 curl -X POST http://127.0.0.1:8000/jobs \
   -H "Content-Type: application/json" \
   -d '{
-    "workload": "monte_carlo",
-    "config": { "samples": 1000000, "seed": 42 }
+    "workload": "mandelbrot",
+    "config": {
+      "width": 256, "height": 256,
+      "x_min": -2.5, "x_max": 1.0,
+      "y_min": -1.0, "y_max": 1.0,
+      "max_iterations": 500,
+      "tile_size": 128
+    }
   }'
 ```
 
-Supported workloads: `monte_carlo`, `matrix_multiply`, `mandelbrot`.
+The response includes the generated `job_id` and the task→worker assignments made at submission time.
 
-## Architecture (summary)
+### Retrieve the result
 
-```
-┌─────────────┐   WebSocket (/ws)    ┌──────────────────┐   SSE (/events)   ┌─────────────┐
-│   Worker    │◄────────────────────►│    Controller    │──────────────────►│  Dashboard  │
-│ (worker.js) │  register, heartbeat │  (FastAPI app)   │  worker snapshots │(dashboard.js)│
-└─────────────┘  ping/pong           └────────┬─────────┘                   └──────┬──────┘
-                                              │ POST /disconnect                      │
-                                              └───────────────────────────────────────┘
-                                              POST /jobs (REST, not yet dispatched)
+```bash
+curl http://127.0.0.1:8000/jobs/<job_id>/result --output result.png
 ```
 
-See [docs/architecture.md](docs/architecture.md) for module responsibilities, state machine, and background tasks.
+Returns the aggregator's result (`image/png` for Mandelbrot) once the job is complete; otherwise returns a "still processing" message.
 
-## Development status
+### Run tests
 
-Aligned with the project timeline in [docs/scope.md](docs/scope.md):
+```bash
+# Python: splitter + aggregator unit tests
+pytest tests/
 
-- **Phase 1 (Controller)** — largely complete: registration, states, disconnect, heartbeat timeout.
-- **Phase 2 (Distributed execution)** — job models and splitters exist; dispatch and aggregation not wired.
-- **Phases 3–8** — schedulers, WASM runtime, fault tolerance, evaluation — not started.
+# Rust: WASM kernel unit tests
+cd runtime
+cargo test
+```
 
-A validation run on 2026-07-29 confirms all Phase 1 runtime paths pass. Splitters and job listing endpoints have known gaps — see [docs/validation.md](docs/validation.md).
+See [docs/commands.md](docs/commands.md) for the full command reference, including rebuilding the WASM runtime.
+
+## Project status
+
+- **Controller lifecycle** (worker registration, heartbeat, latency, disconnect/remove, dashboard) — complete and working.
+- **Job pipeline** (submit → validate → split → schedule → dispatch → execute → aggregate → generic result) — complete and working for `mandelbrot`.
+- **Scheduler** — Round Robin only; capability-aware and adaptive/bandit scheduling described in [docs/scope_updated.md](docs/scope_updated.md) are research/roadmap items, not implemented.
+- **Additional workloads** — not implemented; the architecture is designed to support them (see [docs/architecture.md](docs/architecture.md)) but no second workload exists in the codebase today.
+
+Validated with a single-worker Mandelbrot run and a three-worker run across a laptop, phone, and Raspberry Pi 5 (2048×2048 image, 128×128 tiles, 256 tasks, all results aggregated into a final image). See [docs/validation.md](docs/validation.md) for details.
+
+## Known limitations
+
+- Only `mandelbrot` is a complete, runnable workload.
+- No fault tolerance — a worker that disconnects mid-task does not have its task reassigned; the job simply never completes.
+- `WorkerStates.BUSY` is defined but never assigned — the scheduler does not mark a worker busy during task execution, so a worker can in principle be handed more tasks than it can run concurrently.
+- Plain `ws://` (no TLS) — fine for LAN/dev use, not for production.
+- In-memory-only state — the controller's registry, aggregators, and job tracking are lost on restart.
+
+See [docs/architecture.md](docs/architecture.md), [docs/protocol.md](docs/protocol.md), and [docs/validation.md](docs/validation.md) for details, and [docs/scope_updated.md](docs/scope_updated.md) for the longer-term research plan this project sits inside.
 
 ## License
 

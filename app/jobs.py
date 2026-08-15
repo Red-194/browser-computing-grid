@@ -1,8 +1,6 @@
 from uuid import uuid4, UUID
-from io import BytesIO
 
 from fastapi import APIRouter, Response
-from PIL import Image
 
 from .models.jobs import JobSubmission
 from .services.loader import get_splitter, get_aggregator
@@ -24,10 +22,7 @@ async def submit(job: JobSubmission):
     splitter = get_splitter(job.workload)
     tasks = splitter.split(job)
 
-    aggregator = get_aggregator(
-        job.workload,
-        job.config
-    )
+    aggregator = get_aggregator(job.workload, job.config)
     aggregators[str(job.job_id)] = aggregator
     task_counts[str(job.job_id)] = len(tasks)
 
@@ -88,18 +83,9 @@ async def result(job_id: UUID):
 
     aggregator = aggregators[job_id_str]
 
-    image = Image.frombytes(
-        "L",
-        (aggregator.width, aggregator.height),
-        aggregator.get_image()
-    )
-
-    buffer = BytesIO()
-    image.save(buffer, format="PNG")
-
     return Response(
-        content=buffer.getvalue(),
-        media_type="image/png"
+        content=aggregator.get_result(),
+        media_type=aggregator.result_type
     )
 
 @router.delete("/{job_id}")

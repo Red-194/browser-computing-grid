@@ -1,184 +1,138 @@
 # Validation Report
 
-**Date:** 2026-07-29  
-**Environment:** Python 3.12, FastAPI + Uvicorn, Linux  
-**Controller:** `uvicorn app.main:app --host 127.0.0.1 --port 8765`
+**Scope:** the current typed job/aggregator architecture (discriminated-union `JobSubmission`, dynamic splitter/aggregator loading, generic `aggregator.get_result()`/`result_type` result API) — Mandelbrot is the only implemented workload.
 
 ## Summary
 
-| Category | Result |
-|----------|--------|
-| Python compilation | All modules compile without syntax errors |
-| Phase 1 runtime (HTTP, WebSocket, SSE) | **17 / 17 passed** |
-| Job API validation | **4 / 4 passed** |
-| Workload splitters | **0 / 3 functional** (blocked by missing `job_id`) |
-| Splitter input validation | **4 / 4 passed** (correct `ValueError` on bad input) |
+| Category | Result | Basis |
+|---|---|---|
+| Python unit tests (`pytest tests/`) — Mandelbrot splitter + aggregator | PASS | Automated test suite |
+| Rust unit tests (`cargo test`, `runtime/`) — Mandelbrot kernel | PASS | Automated test suite |
+| WASM release build (`cargo build --release --target wasm32-unknown-unknown`) | PASS | Build validation |
+| `wasm-bindgen` browser-artifact generation from the release binary | PASS | Build validation |
+| Single-worker Mandelbrot job, end-to-end | PASS | Manual observation |
+| Three-worker Mandelbrot job (laptop, phone, Raspberry Pi 5), end-to-end | PASS | Manual observation |
 
-The controller's worker lifecycle, monitoring, and dashboard pipeline are functional. Task decomposition code exists but cannot run until job models expose a shared `job_id`. Job listing, dispatch, and result endpoints remain placeholders.
+This report distinguishes three levels of confidence, used consistently below:
 
----
+- **Automated test** — an automated test exists and passes.
+- **Build validation** — the corresponding build/toolchain step completed successfully.
+- **Manual observation** — a person ran the system and directly observed the described behavior.
 
-## 1. Static checks
-
-### Module compilation
-
-```
-python -m py_compile app/main.py app/routes.py app/websocket.py ...
-```
-
-**Result:** PASS — no syntax errors across all application modules.
-
-### Import smoke test
-
-```
-from app.main import app
-from app.models.jobs import MonteCarloJob, MatrixMultiplyJob, MandelbrotJob
-from app.workloads.*.splitter import *
-```
-
-**Result:** PASS — all imports resolve. No `__init__.py` files are present; Python 3.12 namespace packages handle this, but explicit `__init__.py` files would improve tooling compatibility.
+Anything not covered by one of these three categories is *not* claimed as validated in this document.
 
 ---
 
-## 2. Integration tests (live server)
+## 1. Automated tests
 
-### HTTP routes
+### Python (`pytest tests/`)
 
-| Test | Result | Notes |
-|------|--------|-------|
-| `GET /` from localhost | PASS | 307 → `/dashboard` |
-| `GET /dashboard` | PASS | Returns dashboard HTML |
-| `GET /worker` | PASS | Returns worker HTML |
-| `POST /disconnect/{unknown}` | PASS | `{ "success": false }` |
+`tests/test_splitter.py` and `tests/test_aggregator.py` cover the Mandelbrot workload:
 
-### Jobs API
+- `test_mandelbrot_splitter` — submits a 256×256 job with 128×128 tiles, verifies the splitter produces exactly 4 tasks with correct `row_block`/`col_block` coordinates and sequential `task_id`s.
+- `test_mandelbrot_aggregator` — feeds four 128×128 tiles into `MandelbrotAggregator`, verifies `is_complete()` after all four, and verifies `get_result()` returns bytes with a valid PNG signature.
 
-| Test | Result | Notes |
-|------|--------|-------|
-| `POST /jobs` monte_carlo | PASS | Validates and echoes payload |
-| `POST /jobs` matrix_multiply | PASS | Validates and echoes payload |
-| `POST /jobs` mandelbrot | PASS | Validates and echoes payload |
-| `POST /jobs` invalid workload | PASS | 422 Unprocessable Entity |
-| `GET /jobs` | PASS | Placeholder response (no listing) |
-| `GET /jobs/{id}` | PASS | Placeholder response |
+**Result: PASS.**
 
-### WebSocket (`/ws`)
+### Rust (`cargo test`, run from `runtime/`)
 
-| Test | Result | Notes |
-|------|--------|-------|
-| Register → register_ack | PASS | UUID echoed, state `Idle` |
-| Heartbeat | PASS | Accepted without error |
-| Ping → pong | PASS | Latency computed and stored |
+`runtime/tests/kernel_tests.rs` covers the Mandelbrot kernel with three cases: a full 10×10 tile, a mid-grid 10×10 tile within a larger image, and a partial 5×5 edge tile (25×25 image, tile size 10, so the last tile is clipped).
 
-### Server-Sent Events (`/events`)
-
-| Test | Result | Notes |
-|------|--------|-------|
-| SSE stream opens | PASS | 200, `text/event-stream` |
-| Initial worker snapshot | PASS | JSON array with registered worker |
-
-### Disconnect flow
-
-| Test | Result | Notes |
-|------|--------|-------|
-| Disconnect while online | PASS | Closes socket → worker marked offline |
-| Remove while offline | PASS | Record removed from registry |
+**Result: PASS.**
 
 ---
 
-## 3. Workload splitter tests
+## 2. Build validation
 
-Splitters are not invoked by the running application. They were tested in isolation:
+The WASM runtime is built directly with `wasm-bindgen`, not `wasm-pack`:
 
-### Happy path
-
-| Splitter | Result | Error |
-|----------|--------|-------|
-| `MonteCarloSplitter.split(job, 4)` | **FAIL** | `'MonteCarloJob' object has no attribute 'job_id'` |
-| `MatrixMultiplySplitter.split(job)` | **FAIL** | `'MatrixMultiplyJob' object has no attribute 'job_id'` |
-| `MandelbrotSplitter.split(job)` | **FAIL** | `'MandelbrotJob' object has no attribute 'job_id'` |
-
-**Root cause:** All three splitters pass `job_id=job.job_id` when constructing `Task` objects, but `MonteCarloJob`, `MatrixMultiplyJob`, and `MandelbrotJob` in `models/jobs.py` do not define a `job_id` field. The `Task` model has `job_id: UUID = Field(default_factory=uuid4)`, so each task would get a random ID even if the attribute access were fixed without adding a shared job-level ID.
-
-**Recommended fix:**
-
-```python
-# models/jobs.py — add to each job class or a shared base:
-job_id: UUID = Field(default_factory=uuid4)
+```bash
+cd runtime
+cargo build --release --target wasm32-unknown-unknown
+wasm-bindgen --target web --out-dir pkg --out-name runtime \
+  target/wasm32-unknown-unknown/release/runtime.wasm
 ```
 
-Then ensure all tasks from one submission share the same `job_id`.
+- `cargo build --release --target wasm32-unknown-unknown` — **PASS**, produces `target/wasm32-unknown-unknown/release/runtime.wasm`.
+- `wasm-bindgen` against that binary — **PASS**, produces the browser-facing glue checked into `runtime/pkg/` (`runtime.js`, `runtime_bg.wasm`, `runtime.d.ts`, `runtime_bg.wasm.d.ts`), which the controller mounts at `/runtime` and `worker.js` imports directly.
 
-### Input validation (error paths)
-
-| Test | Result |
-|------|--------|
-| Monte Carlo: `num_tasks=0` | PASS — raises `ValueError` |
-| Monte Carlo: `samples=0` | PASS — raises `ValueError` |
-| Matrix: `block_size=0` | PASS — raises `ValueError` |
-| Mandelbrot: `tile_size=0` | PASS — raises `ValueError` |
+See [commands.md](commands.md) for the full command reference.
 
 ---
 
-## 4. Protocol & timing verification
+## 3. Manual end-to-end validation
 
-Cross-checked implementation against [protocol.md](protocol.md):
+### Single-worker Mandelbrot job
 
-| Parameter | Documented | Code location | Match |
-|-----------|------------|---------------|-------|
-| Worker heartbeat interval | 5000 ms | `worker.js` `HEARTBEAT_INTERVAL` | Yes |
-| Controller ping interval | 5 s | `monitoring.py` `ping_workers` | Yes |
-| Heartbeat timeout | 15 s | `monitoring.py` `HEARTBEAT_TIMEOUT` | Yes |
-| Timeout check frequency | 1 s | `monitoring.py` `monitor_heartbeats` | Yes |
-| Register upsert by UUID | Yes | `websocket.py` | Yes |
-| Offline workers kept in registry | Yes | `websocket.py` disconnect handler | Yes |
-| Dashboard snapshot (not diff) | Yes | `events.py` + `dashboard.js` | Yes |
-| Disconnect / Remove two-step | Yes | `routes.py` + `dashboard.js` | Yes |
+A Mandelbrot job was submitted with a single worker connected and ran to completion: the job was split into tasks, the worker executed them in the WASM runtime, task results were aggregated, and the final image was retrieved via `GET /jobs/{id}/result`.
+
+**Result: PASS.**
+
+### Three-worker Mandelbrot job
+
+A single Mandelbrot job was distributed across three simultaneously connected, heterogeneous workers:
+
+- a laptop
+- a phone
+- a Raspberry Pi 5
+
+Job parameters: a 2048×2048 image split into 128×128 tiles, producing **256 tasks**. All 256 task results were received by the controller, aggregation completed (`is_complete()` became true), and the final 2048×2048 image was successfully generated and retrieved through `GET /jobs/{id}/result`.
+
+**Result: PASS.**
+
+This confirms, for at least this one run:
+- the Round Robin scheduler correctly distributed 256 tasks across three heterogeneous, concurrently connected workers,
+- each worker's WASM runtime executed its assigned Mandelbrot tiles correctly regardless of device class (laptop / phone / Raspberry Pi 5),
+- the controller correctly aggregated results arriving from multiple independent workers into one coherent final image.
+
+No per-worker task counts, timings, or worker→task mappings are recorded here beyond what's stated above, since none were established by the available logs.
 
 ---
 
-## 5. Known gaps & risks
+## 4. What this report does not claim
 
-| Item | Severity | Description |
-|------|----------|-------------|
-| Missing `job_id` on job models | **High** | Blocks all splitter usage and Phase 2 |
-| Jobs API placeholders | Medium | No store, dispatch, or results |
-| `WorkerStates.BUSY` unused | Low | Expected — Phase 2 |
-| Plain `ws://` in worker.js | Low | No TLS; fine for dev, not production |
-| In-memory registry | Low | State lost on restart; expected for Phase 1 |
-| No automated test suite | Low | Validation was manual/scripted this run |
-| Dashboard colspan mismatch | Cosmetic | Empty-state row uses `colspan="6"` in JS but table has 7 columns |
+- No benchmark numbers (throughput, latency distributions, makespan, etc.) are reported — none were measured in a way that could be included here without fabrication.
+- No claim is made about behavior under worker failure, disconnect-mid-task, or heavier concurrent job load — these have not been manually tested.
+- No claim is made about any workload other than `mandelbrot` — no other workload exists in the codebase to test.
+- Live HTTP/WebSocket/SSE endpoints beyond the job flows described above (e.g. `GET /jobs`, `GET /jobs/{id}`, `DELETE /jobs/{id}`, the dashboard's disconnect/remove flow) are code-verified in [architecture.md](architecture.md) and [protocol.md](protocol.md) but are not separately re-validated in this report.
+
+---
+
+## 5. Known limitations (not bugs — see [architecture.md](architecture.md) and [README.md](../README.md))
+
+| Item | Description |
+|---|---|
+| Single workload | Only `mandelbrot` is implemented; the architecture supports adding more but none exist yet |
+| `WorkerStates.BUSY` unused | Scheduler can assign further tasks to a worker that already has one in flight |
+| No task reassignment on worker disconnect | A task lost mid-flight is never retried; its job never completes |
+| Plain `ws://` | No TLS; fine for LAN/dev, not production |
+| In-memory registry / job state | Lost on controller restart; expected at this stage |
+| `GET /jobs`, `GET /jobs/{id}`, `DELETE /jobs/{id}` | Documented placeholders — static responses, no job store lookup |
 
 ---
 
 ## 6. Reproducing this validation
 
-Start the controller:
-
 ```bash
-source venv/bin/activate
-uvicorn app.main:app --host 127.0.0.1 --port 8765
+# Python unit tests
+pytest tests/
+
+# Rust unit tests
+cd runtime && cargo test
+
+# WASM release build + browser artifacts
+cd runtime
+cargo build --release --target wasm32-unknown-unknown
+wasm-bindgen --target web --out-dir pkg --out-name runtime \
+  target/wasm32-unknown-unknown/release/runtime.wasm
+
+# Live integration (requires a browser + two terminals)
+uvicorn app.main:app --host 127.0.0.1 --port 8000
+# then open /dashboard and /worker as described in README.md, and:
+curl -X POST http://127.0.0.1:8000/jobs -H "Content-Type: application/json" -d '{...mandelbrot config...}'
+curl http://127.0.0.1:8000/jobs/<job_id>/result --output result.png
 ```
-
-Install test dependency and run integration checks:
-
-```bash
-pip install httpx websockets
-# Run the validation script used during this report (or use curl + browser manually)
-```
-
-Manual browser check:
-
-1. Open `http://127.0.0.1:8765/dashboard`
-2. Open `http://127.0.0.1:8765/worker` in another tab
-3. Confirm worker appears with state `Idle`, cores, memory, and latency within ~10 s
-4. Click **Disconnect** → state becomes `Offline`
-5. Click **Remove** → row disappears
-
----
 
 ## 7. Conclusion
 
-**Phase 1 is validated and working.** The controller reliably registers workers, measures latency, detects stale connections, streams live updates to the dashboard, and handles disconnect/remove flows.
-
-**Phase 2 prerequisites need attention:** add `job_id` to job models, wire splitters into `POST /jobs`, implement task dispatch over WebSocket, and replace placeholder job endpoints with a real job store.
+The controller lifecycle (registration, heartbeat, latency, disconnect/remove, dashboard) and the full Mandelbrot job pipeline (submit → typed validation → split → schedule → dispatch → WASM execution → aggregate → generic result retrieval) are validated by a combination of automated tests, successful builds, and direct manual observation, including a real multi-device (laptop/phone/Raspberry Pi 5), 256-task run. No other workload is implemented, so no other workload's end-to-end behavior is claimed here.
