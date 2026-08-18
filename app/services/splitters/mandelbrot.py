@@ -42,6 +42,7 @@ class MandelbrotSplitter:
                         ),
                     )
                 )
+
                 task_ctr += 1
 
         return tasks

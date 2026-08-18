@@ -1,5 +1,7 @@
 # Adaptive Browser Compute Grid --- Final Year Project Scope & Plan
 
+> **Note:** this is the current, authoritative scope and research plan, superseding the earlier draft in [scope.md](scope.md). It describes the target research direction, including a workload suite (SAT/SMT, compression, regex — §14) that is not yet implemented. For what is actually implemented today, see [../README.md](../README.md) and [architecture.md](architecture.md): the codebase currently implements a single workload, `mandelbrot`, which predates this document's workload-suite direction and is not itself one of the SAT/Zstd/Regex candidates discussed below.
+
 ## 1. One-Line Pitch
 
 A zero-install, browser-native distributed computing grid with

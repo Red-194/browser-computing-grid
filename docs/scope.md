@@ -1,5 +1,7 @@
 # Adaptive Browser Compute Grid — Final Year Project Scope & Plan
 
+> **Note:** this is an earlier scope draft. [scope_updated.md](scope_updated.md) is the current, more detailed scope and research plan (it narrows the benchmark-workload candidates listed below — see its §14–16) — refer to it first; this document is kept for history. For current implementation status, see [../README.md](../README.md) and [architecture.md](architecture.md).
+
 ## One-line pitch
 A zero-install, browser-native distributed computing grid with capability-aware adaptive scheduling and crash-fault recovery, executing WebAssembly workloads across heterogeneous devices.
 

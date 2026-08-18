@@ -1,0 +1,25 @@
+SCHEDULER COMPARISON
+
+Workload: 8192×8192 Mandelbrot
+Tasks: 4096
+Workers: Laptop, Phone, Raspberry Pi 5
+Workers: Heterogeneous
+
+ROUND ROBIN
+────────────────────────────────────────
+Laptop:                 102.641 s
+Laptop + Phone:          64.080 s
+Laptop + Phone + RPi 5:  43.731 s
+
+3-worker speedup:        2.35×
+3-worker efficiency:     78.3%
+
+
+RANDOM (1 run executed)
+────────────────────────────────────────
+Laptop:                 101.469 s
+Laptop + Phone:          61.067 s
+Laptop + Phone + RPi 5:  41.658 s
+
+3-worker speedup:        2.44×
+3-worker efficiency:     81.3%
