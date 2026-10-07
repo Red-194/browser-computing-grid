@@ -1,523 +1,989 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
+
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-    <title>Jobs - Browser Computing Grid</title>
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
 
-    <link rel="stylesheet" href="/static/css/style.css">
+    <title>Jobs - ComputeGrid</title>
+
+    <link
+        rel="stylesheet"
+        href="/static/css/style.css"
+    >
+
 
     <style>
+
+        /* ==========================================
+           JOB PAGE
+        ========================================== */
+
         .jobs-page {
             min-height: 100vh;
-            padding: 32px;
+            padding: 34px;
         }
 
+
+        /* ==========================================
+           HEADER
+        ========================================== */
+
         .jobs-header {
+            position: relative;
+
             display: flex;
-            justify-content: space-between;
             align-items: center;
-            gap: 20px;
+
+            min-height: 42px;
+
             margin-bottom: 28px;
         }
 
+
         .jobs-header h1 {
             margin: 0;
+
+            font-size: 30px;
+
+            color: var(--text);
         }
 
-        .jobs-header p {
-            margin: 6px 0 0;
-            color: var(--muted, #8e99b5);
-        }
 
-        .back-btn {
+        /* ==========================================
+           DASHBOARD BUTTON
+        ========================================== */
+
+        .jobs-header .back-btn {
+
+            position: absolute;
+
+            right: 0;
+            top: 0;
+
+            display: inline-flex;
+            align-items: center;
+
+            padding: 10px 15px;
+
+            border: 1px solid var(--border);
+
+            border-radius: 9px;
+
+            background: var(--panel);
+
+            color: var(--text);
+
             text-decoration: none;
-            padding: 10px 16px;
-            border-radius: 8px;
-            border: 1px solid var(--border, #26314d);
-            color: var(--text, #f5f7ff);
-            background: var(--panel, #151d32);
+
+            font-size: 13px;
+
+            font-weight: 600;
+
+            transition:
+                background-color 0.2s ease,
+                border-color 0.2s ease,
+                color 0.2s ease;
         }
 
-        .back-btn:hover {
-            background: var(--panel-light, #1b2540);
+
+        .jobs-header .back-btn:hover {
+            border-color: var(--accent);
+
+            background: var(--panel-light);
         }
+
+
+        /* ==========================================
+           THEME BUTTON
+        ========================================== */
+
+        .jobs-header .jobs-theme-toggle {
+
+            position: absolute;
+
+            right: 125px;
+            top: 2px;
+
+            margin: 0;
+
+            z-index: 10;
+        }
+
+
+        /* ==========================================
+           MAIN LAYOUT
+        ========================================== */
 
         .jobs-layout {
+
             display: grid;
-            grid-template-columns: minmax(320px, 420px) 1fr;
+
+            grid-template-columns:
+                440px
+                minmax(0, 1fr);
+
             gap: 24px;
+
             align-items: start;
         }
 
+
+        /* ==========================================
+           JOB PANELS
+        ========================================== */
+
         .job-panel {
-            background: var(--panel, #151d32);
-            border: 1px solid var(--border, #26314d);
+
+            background: var(--panel);
+
+            border: 1px solid var(--border);
+
             border-radius: 14px;
-            padding: 24px;
+
+            padding: 26px;
         }
+
 
         .job-panel h2 {
-            margin-top: 0;
-            margin-bottom: 6px;
+
+            margin: 0 0 22px;
+
+            color: var(--text);
+
+            font-size: 21px;
         }
 
-        .panel-description {
-            color: var(--muted, #8e99b5);
-            margin-top: 0;
-            margin-bottom: 22px;
-            line-height: 1.5;
-        }
+
+        /* ==========================================
+           WORKER STATUS
+        ========================================== */
 
         .worker-status {
+
             display: inline-flex;
+
             align-items: center;
+
             gap: 8px;
-            margin-bottom: 20px;
-            padding: 8px 12px;
+
+            padding: 8px 11px;
+
+            margin-bottom: 24px;
+
             border-radius: 999px;
-            background: rgba(57, 217, 138, 0.1);
-            color: var(--green, #39d98a);
-            font-size: 13px;
+
+            background: rgba(57, 217, 138, 0.08);
+
+            color: var(--green);
+
+            font-size: 12px;
+
             font-weight: 600;
         }
 
+
         .worker-dot {
-            width: 8px;
-            height: 8px;
+
+            width: 7px;
+            height: 7px;
+
             border-radius: 50%;
+
             background: currentColor;
         }
 
+
+        /* ==========================================
+           FORM
+        ========================================== */
+
+        .form-section {
+
+            padding: 20px 0;
+
+            border-top: 1px solid var(--border);
+        }
+
+
+        .form-section:first-of-type {
+
+            border-top: none;
+
+            padding-top: 0;
+        }
+
+
+        .form-section-title {
+
+            margin-bottom: 14px;
+
+            color: var(--text);
+
+            font-size: 14px;
+
+            font-weight: 650;
+        }
+
+
         .form-group {
-            margin-bottom: 16px;
+
+            margin-bottom: 14px;
         }
 
-        .form-group label {
+
+        .form-group:last-child {
+
+            margin-bottom: 0;
+        }
+
+
+        label {
+
             display: block;
+
             margin-bottom: 7px;
-            color: var(--muted, #8e99b5);
-            font-size: 13px;
+
+            color: var(--muted);
+
+            font-size: 12px;
         }
 
-        .form-group input,
-        .form-group select {
+
+        input,
+        select {
+
             width: 100%;
+
+            height: 42px;
+
             box-sizing: border-box;
-            padding: 11px 12px;
+
+            padding: 0 12px;
+
+            border: 1px solid var(--border);
+
             border-radius: 8px;
-            border: 1px solid var(--border, #26314d);
-            background: #0f1628;
-            color: var(--text, #f5f7ff);
+
+            background: var(--bg);
+
+            color: var(--text);
+
+            font-size: 13px;
+
             outline: none;
+
+            transition:
+                background-color 0.2s ease,
+                border-color 0.2s ease,
+                color 0.2s ease;
         }
 
-        .form-group input:focus,
-        .form-group select:focus {
-            border-color: var(--accent, #6c7cff);
+
+        input:focus,
+        select:focus {
+
+            border-color: var(--accent);
         }
 
-        .form-row {
+
+        .two-column {
+
             display: grid;
-            grid-template-columns: 1fr 1fr;
+
+            grid-template-columns:
+                1fr
+                1fr;
+
             gap: 12px;
         }
 
+
+        /* ==========================================
+           SUBMIT BUTTON
+        ========================================== */
+
         .submit-btn {
+
             width: 100%;
-            margin-top: 8px;
-            padding: 12px 16px;
+
+            height: 44px;
+
+            margin-top: 20px;
+
             border: none;
-            border-radius: 8px;
-            background: var(--accent, #6c7cff);
+
+            border-radius: 9px;
+
+            background: var(--accent);
+
             color: white;
-            font-weight: 700;
+
             cursor: pointer;
+
+            font-size: 13px;
+
+            font-weight: 650;
+
+            transition: opacity 0.2s ease;
         }
+
 
         .submit-btn:hover {
-            filter: brightness(1.08);
+
+            opacity: 0.9;
         }
 
+
         .submit-btn:disabled {
-            opacity: 0.6;
+
+            opacity: 0.45;
+
             cursor: not-allowed;
         }
 
-        .job-status {
-            margin-top: 16px;
-            padding: 12px;
-            border-radius: 8px;
-            display: none;
+
+        #jobStatus {
+
+            margin-top: 12px;
+
+            font-size: 12px;
+
             line-height: 1.5;
         }
 
-        .job-status.info {
-            display: block;
-            background: rgba(108, 124, 255, 0.1);
-            color: #b9c1ff;
-        }
 
-        .job-status.error {
-            display: block;
-            background: rgba(255, 102, 120, 0.1);
-            color: var(--red, #ff6678);
-        }
+        /* ==========================================
+           JOB MONITOR
+        ========================================== */
 
-        .job-status.success {
-            display: block;
-            background: rgba(57, 217, 138, 0.1);
-            color: var(--green, #39d98a);
-        }
+        #emptyMonitor {
 
-        .job-summary {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 12px;
-            margin-bottom: 24px;
-        }
+            min-height: 260px;
 
-        .summary-card {
-            padding: 16px;
-            border-radius: 10px;
-            background: #10172a;
-            border: 1px solid var(--border, #26314d);
-        }
-
-        .summary-card .label {
-            color: var(--muted, #8e99b5);
-            font-size: 12px;
-            margin-bottom: 7px;
-        }
-
-        .summary-card .value {
-            font-size: 20px;
-            font-weight: 700;
-        }
-
-        .job-id {
-            word-break: break-all;
-            font-family: monospace;
-            font-size: 12px !important;
-        }
-
-        .progress-wrapper {
-            margin: 20px 0;
-        }
-
-        .progress-label {
             display: flex;
-            justify-content: space-between;
-            color: var(--muted, #8e99b5);
-            font-size: 13px;
-            margin-bottom: 8px;
-        }
 
-        .progress-bar {
-            height: 8px;
-            border-radius: 999px;
-            overflow: hidden;
-            background: #0c1324;
-        }
+            align-items: center;
 
-        .progress-fill {
-            height: 100%;
-            width: 0%;
-            background: var(--accent, #6c7cff);
-            transition: width 0.3s ease;
-        }
+            justify-content: center;
 
-        .assignments-wrapper {
-            overflow-x: auto;
-        }
+            border: 1px dashed var(--border);
 
-        .assignments-table {
-            width: 100%;
-            border-collapse: collapse;
-        }
+            border-radius: 10px;
 
-        .assignments-table th,
-        .assignments-table td {
-            padding: 12px;
-            text-align: left;
-            border-bottom: 1px solid var(--border, #26314d);
+            color: var(--muted);
+
             font-size: 13px;
         }
 
-        .assignments-table th {
-            color: var(--muted, #8e99b5);
-            font-weight: 600;
-        }
 
-        .worker-id {
-            font-family: monospace;
-            font-size: 12px;
-        }
+        #jobMonitor {
 
-        .status-badge {
-            display: inline-block;
-            padding: 4px 8px;
-            border-radius: 999px;
-            font-size: 11px;
-            font-weight: 700;
-            background: rgba(108, 124, 255, 0.1);
-            color: #b9c1ff;
-        }
-
-        .result-area {
-            margin-top: 24px;
             display: none;
         }
 
-        .result-area.visible {
-            display: block;
+
+        /* ==========================================
+           SUMMARY
+        ========================================== */
+
+        .summary-grid {
+
+            display: grid;
+
+            grid-template-columns:
+                repeat(3, 1fr);
+
+            gap: 12px;
+
+            margin-bottom: 24px;
         }
+
+
+        .summary-card {
+
+            padding: 15px;
+
+            border: 1px solid var(--border);
+
+            border-radius: 9px;
+
+            background: var(--bg);
+        }
+
+
+        .summary-card .label {
+
+            margin-bottom: 7px;
+
+            color: var(--muted);
+
+            font-size: 11px;
+        }
+
+
+        .summary-card .value {
+
+            color: var(--text);
+
+            font-size: 14px;
+
+            font-weight: 650;
+
+            word-break: break-word;
+        }
+
+
+        /* ==========================================
+           PROGRESS
+        ========================================== */
+
+        .progress-wrapper {
+
+            margin-bottom: 24px;
+        }
+
+
+        .progress-label {
+
+            display: flex;
+
+            justify-content: space-between;
+
+            margin-bottom: 8px;
+
+            color: var(--muted);
+
+            font-size: 12px;
+        }
+
+
+        .progress-bar {
+
+            width: 100%;
+
+            height: 7px;
+
+            overflow: hidden;
+
+            border-radius: 999px;
+
+            background: var(--bg);
+        }
+
+
+        .progress-fill {
+
+            width: 0%;
+
+            height: 100%;
+
+            border-radius: inherit;
+
+            background: var(--accent);
+
+            transition: width 0.3s ease;
+        }
+
+
+        /* ==========================================
+           ASSIGNMENTS
+        ========================================== */
+
+        #jobMonitor h3 {
+
+            margin: 0 0 12px;
+
+            color: var(--text);
+
+            font-size: 15px;
+        }
+
+
+        .assignments-wrapper {
+
+            overflow-x: auto;
+
+            border: 1px solid var(--border);
+
+            border-radius: 9px;
+        }
+
+
+        .assignments-table {
+
+            width: 100%;
+
+            border-collapse: collapse;
+        }
+
+
+        .assignments-table th,
+        .assignments-table td {
+
+            padding: 11px 13px;
+
+            border-bottom:
+                1px solid var(--border);
+
+            text-align: left;
+
+            font-size: 12px;
+        }
+
+
+        .assignments-table th {
+
+            color: var(--muted);
+
+            font-weight: 600;
+        }
+
+
+        .assignments-table td {
+
+            color: var(--text);
+        }
+
+
+        .assignments-table tr:last-child td {
+
+            border-bottom: none;
+        }
+
+
+        /* ==========================================
+           RESULT
+        ========================================== */
+
+        .result-area {
+
+            display: none;
+
+            margin-top: 24px;
+        }
+
+
+        .result-area h3 {
+
+            margin: 0 0 12px;
+
+            color: var(--text);
+
+            font-size: 15px;
+        }
+
+
+        .result-preview {
+
+            padding: 14px;
+
+            border: 1px solid var(--border);
+
+            border-radius: 10px;
+
+            background: var(--bg);
+        }
+
+
+        .result-preview-label {
+
+            margin-bottom: 12px;
+
+            color: var(--muted);
+
+            font-size: 11px;
+        }
+
 
         .result-image {
+
             display: block;
-            max-width: 100%;
+
+            width: 100%;
+
             height: auto;
-            border-radius: 10px;
-            border: 1px solid var(--border, #26314d);
-            background: black;
+
+            border-radius: 7px;
         }
 
-        .empty-message {
-            color: var(--muted, #8e99b5);
-            text-align: center;
-            padding: 40px 20px;
+
+        /* ==========================================
+           LIGHT THEME RESULT
+        ========================================== */
+
+        :root[data-theme="light"] .progress-bar {
+
+            background: #e4e8f1;
         }
 
-        @media (max-width: 900px) {
+
+        :root[data-theme="light"] .result-preview {
+
+            background: #f4f6fb;
+        }
+
+
+        /* ==========================================
+           RESPONSIVE
+        ========================================== */
+
+        @media (max-width: 950px) {
+
             .jobs-layout {
+
                 grid-template-columns: 1fr;
             }
+
         }
 
+
         @media (max-width: 600px) {
+
             .jobs-page {
+
                 padding: 18px;
             }
 
+
             .jobs-header {
+
                 align-items: flex-start;
-                flex-direction: column;
             }
 
-            .form-row,
-            .job-summary {
+
+            .jobs-header h1 {
+
+                font-size: 25px;
+
+                padding-right: 130px;
+            }
+
+
+            .jobs-header .jobs-theme-toggle {
+
+                right: 115px;
+            }
+
+
+            .jobs-header .back-btn {
+
+                right: 0;
+            }
+
+
+            .two-column {
+
                 grid-template-columns: 1fr;
             }
+
+
+            .summary-grid {
+
+                grid-template-columns: 1fr;
+            }
+
         }
+
     </style>
+
 </head>
+
 
 <body>
 
+
 <div class="jobs-page">
+
+
+    <!-- ==========================================
+         HEADER
+    =========================================== -->
 
     <div class="jobs-header">
 
-        <div>
-            <h1>Workload Jobs</h1>
-            <p>Submit computational workloads to the browser computing grid.</p>
-        </div>
 
-        <a class="back-btn" href="/dashboard">
+        <h1>
+            Workload Jobs
+        </h1>
+
+
+        <a
+            href="/dashboard"
+            class="back-btn"
+        >
             ← Dashboard
         </a>
+
 
     </div>
 
 
+
+    <!-- ==========================================
+         MAIN
+    =========================================== -->
+
     <div class="jobs-layout">
 
-        <!-- JOB SUBMISSION -->
+
+        <!-- ======================================
+             SUBMIT JOB
+        ======================================= -->
 
         <section class="job-panel">
 
-            <h2>Submit Workload</h2>
 
-            <p class="panel-description">
-                Create a Mandelbrot computation and distribute its tasks
-                across currently available browser workers.
-            </p>
+            <h2>
+                Submit Workload
+            </h2>
+
+
+            <!-- WORKER STATUS -->
 
             <div class="worker-status">
+
                 <span class="worker-dot"></span>
-                <span id="workerStatus">Checking workers...</span>
+
+                <span id="workerStatus">
+                    Checking workers...
+                </span>
+
             </div>
 
 
+            <!-- FORM -->
+
             <form id="jobForm">
 
-                <div class="form-group">
 
-                    <label for="workload">
+                <!-- WORKLOAD -->
+
+                <div class="form-section">
+
+
+                    <div class="form-section-title">
                         Workload
-                    </label>
+                    </div>
 
-                    <select id="workload" disabled>
-                        <option value="mandelbrot">
-                            Mandelbrot
-                        </option>
-                    </select>
+
+                    <div class="form-group">
+
+
+                        <label for="workload">
+                            Type
+                        </label>
+
+
+                        <select
+                            id="workload"
+                            disabled
+                        >
+
+                            <option value="mandelbrot">
+                                Mandelbrot
+                            </option>
+
+                        </select>
+
+
+                    </div>
+
 
                 </div>
 
 
-                <div class="form-row">
 
-                    <div class="form-group">
+                <!-- OUTPUT SIZE -->
 
-                        <label for="width">
-                            Width
-                        </label>
+                <div class="form-section">
 
-                        <input
-                            id="width"
-                            type="number"
-                            min="1"
-                            value="800"
-                            required
-                        >
 
+                    <div class="form-section-title">
+                        Output Size
                     </div>
 
 
-                    <div class="form-group">
+                    <div class="two-column">
 
-                        <label for="height">
-                            Height
-                        </label>
 
-                        <input
-                            id="height"
-                            type="number"
-                            min="1"
-                            value="600"
-                            required
-                        >
+                        <div class="form-group">
+
+                            <label for="width">
+                                Width
+                            </label>
+
+                            <input
+                                id="width"
+                                type="number"
+                                value="800"
+                            >
+
+                        </div>
+
+
+                        <div class="form-group">
+
+                            <label for="height">
+                                Height
+                            </label>
+
+                            <input
+                                id="height"
+                                type="number"
+                                value="600"
+                            >
+
+                        </div>
+
 
                     </div>
+
 
                 </div>
 
 
-                <div class="form-row">
 
-                    <div class="form-group">
+                <!-- COMPUTATION -->
 
-                        <label for="xMin">
-                            X Min
-                        </label>
+                <div class="form-section">
 
-                        <input
-                            id="xMin"
-                            type="number"
-                            step="any"
-                            value="-2"
-                            required
-                        >
 
+                    <div class="form-section-title">
+                        Computation
                     </div>
 
 
-                    <div class="form-group">
+                    <div class="two-column">
 
-                        <label for="xMax">
-                            X Max
-                        </label>
 
-                        <input
-                            id="xMax"
-                            type="number"
-                            step="any"
-                            value="1"
-                            required
-                        >
+                        <div class="form-group">
+
+                            <label for="maxIterations">
+                                Max Iterations
+                            </label>
+
+                            <input
+                                id="maxIterations"
+                                type="number"
+                                value="500"
+                            >
+
+                        </div>
+
+
+                        <div class="form-group">
+
+                            <label for="tileSize">
+                                Tile Size
+                            </label>
+
+                            <input
+                                id="tileSize"
+                                type="number"
+                                value="100"
+                            >
+
+                        </div>
+
 
                     </div>
+
 
                 </div>
 
 
-                <div class="form-row">
 
-                    <div class="form-group">
+                <!-- COORDINATE RANGE -->
 
-                        <label for="yMin">
-                            Y Min
-                        </label>
+                <div class="form-section">
 
-                        <input
-                            id="yMin"
-                            type="number"
-                            step="any"
-                            value="-1.5"
-                            required
-                        >
 
+                    <div class="form-section-title">
+                        Coordinate Range
                     </div>
 
 
-                    <div class="form-group">
+                    <div class="two-column">
 
-                        <label for="yMax">
-                            Y Max
-                        </label>
 
-                        <input
-                            id="yMax"
-                            type="number"
-                            step="any"
-                            value="1.5"
-                            required
-                        >
+                        <div class="form-group">
+
+                            <label for="xMin">
+                                X Min
+                            </label>
+
+                            <input
+                                id="xMin"
+                                type="number"
+                                step="any"
+                                value="-2"
+                            >
+
+                        </div>
+
+
+                        <div class="form-group">
+
+                            <label for="xMax">
+                                X Max
+                            </label>
+
+                            <input
+                                id="xMax"
+                                type="number"
+                                step="any"
+                                value="1"
+                            >
+
+                        </div>
+
+
+                        <div class="form-group">
+
+                            <label for="yMin">
+                                Y Min
+                            </label>
+
+                            <input
+                                id="yMin"
+                                type="number"
+                                step="any"
+                                value="-1.5"
+                            >
+
+                        </div>
+
+
+                        <div class="form-group">
+
+                            <label for="yMax">
+                                Y Max
+                            </label>
+
+                            <input
+                                id="yMax"
+                                type="number"
+                                step="any"
+                                value="1.5"
+                            >
+
+                        </div>
+
 
                     </div>
+
 
                 </div>
 
 
-                <div class="form-row">
 
-                    <div class="form-group">
-
-                        <label for="maxIterations">
-                            Max Iterations
-                        </label>
-
-                        <input
-                            id="maxIterations"
-                            type="number"
-                            min="1"
-                            value="500"
-                            required
-                        >
-
-                    </div>
-
-
-                    <div class="form-group">
-
-                        <label for="tileSize">
-                            Tile Size
-                        </label>
-
-                        <input
-                            id="tileSize"
-                            type="number"
-                            min="1"
-                            value="100"
-                            required
-                        >
-
-                    </div>
-
-                </div>
-
+                <!-- SUBMIT -->
 
                 <button
                     id="submitBtn"
@@ -527,43 +993,47 @@
                     Submit Job
                 </button>
 
+
+                <div id="jobStatus"></div>
+
+
             </form>
 
-
-            <div
-                id="jobStatus"
-                class="job-status"
-            ></div>
 
         </section>
 
 
-        <!-- JOB MONITOR -->
+
+        <!-- ======================================
+             JOB MONITOR
+        ======================================= -->
 
         <section class="job-panel">
 
-            <h2>Job Monitor</h2>
 
-            <p class="panel-description">
-                Track the submitted job, its task assignments, and the
-                final computation result.
-            </p>
+            <h2>
+                Job Monitor
+            </h2>
 
 
-            <div
-                id="emptyMonitor"
-                class="empty-message"
-            >
+            <!-- EMPTY -->
+
+            <div id="emptyMonitor">
+
                 No job submitted yet.
+
             </div>
 
 
-            <div
-                id="jobMonitor"
-                style="display: none;"
-            >
+            <!-- MONITOR -->
 
-                <div class="job-summary">
+            <div id="jobMonitor">
+
+
+                <!-- SUMMARY -->
+
+                <div class="summary-grid">
+
 
                     <div class="summary-card">
 
@@ -573,7 +1043,7 @@
 
                         <div
                             id="jobId"
-                            class="value job-id"
+                            class="value"
                         >
                             -
                         </div>
@@ -591,7 +1061,7 @@
                             id="taskCount"
                             class="value"
                         >
-                            0
+                            -
                         </div>
 
                     </div>
@@ -612,15 +1082,20 @@
 
                     </div>
 
+
                 </div>
 
 
+
+                <!-- PROGRESS -->
+
                 <div class="progress-wrapper">
+
 
                     <div class="progress-label">
 
                         <span>
-                            Job Progress
+                            Progress
                         </span>
 
                         <span id="progressText">
@@ -628,6 +1103,7 @@
                         </span>
 
                     </div>
+
 
                     <div class="progress-bar">
 
@@ -638,58 +1114,112 @@
 
                     </div>
 
+
                 </div>
 
 
-                <h3>Task Assignments</h3>
+
+                <!-- ASSIGNMENTS -->
+
+                <h3>
+                    Task Assignments
+                </h3>
+
 
                 <div class="assignments-wrapper">
 
+
                     <table class="assignments-table">
+
 
                         <thead>
 
-                        <tr>
-                            <th>Task</th>
-                            <th>Worker</th>
-                            <th>Status</th>
-                        </tr>
+                            <tr>
+
+                                <th>
+                                    Task
+                                </th>
+
+                                <th>
+                                    Worker
+                                </th>
+
+                                <th>
+                                    Status
+                                </th>
+
+                            </tr>
 
                         </thead>
 
-                        <tbody id="assignmentTable">
 
+                        <tbody id="assignmentTable">
                         </tbody>
+
 
                     </table>
 
+
                 </div>
 
+
+
+                <!-- RESULT -->
 
                 <div
                     id="resultArea"
                     class="result-area"
                 >
 
-                    <h3>Result</h3>
 
-                    <img
-                        id="resultImage"
-                        class="result-image"
-                        alt="Mandelbrot computation result"
-                    >
+                    <h3>
+                        Result
+                    </h3>
+
+
+                    <div class="result-preview">
+
+
+                        <div class="result-preview-label">
+                            Mandelbrot Output
+                        </div>
+
+
+                        <img
+                            id="resultImage"
+                            class="result-image"
+                            alt="Mandelbrot computation result"
+                        >
+
+
+                    </div>
+
 
                 </div>
 
+
             </div>
+
 
         </section>
 
+
     </div>
+
 
 </div>
 
+
+<!-- THEME SCRIPT -->
+
+<script src="/static/js/theme.js"></script>
+
+
+<!-- EXISTING JOB SCRIPT -->
+
 <script src="/static/js/jobs.js"></script>
 
+
 </body>
+
 </html>

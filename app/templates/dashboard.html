@@ -5,16 +5,394 @@
 
     <meta charset="UTF-8">
 
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
 
     <title>ComputeGrid Dashboard</title>
 
-    <link rel="stylesheet" href="/static/css/style.css">
+    <link
+        rel="stylesheet"
+        href="/static/css/style.css"
+    >
+
+
+    <style>
+
+        /* =========================================
+           WORKER URL BUTTON
+        ========================================= */
+
+        .worker-url-btn {
+
+            height: 38px;
+
+            padding: 0 14px;
+
+            border: 1px solid var(--border);
+
+            border-radius: 9px;
+
+            background: var(--panel);
+
+            color: var(--text);
+
+            cursor: pointer;
+
+            font-size: 12px;
+
+            font-weight: 600;
+
+        }
+
+
+        .worker-url-btn:hover {
+
+            background: var(--panel-light);
+
+            border-color: var(--accent);
+
+        }
+
+
+
+        /* =========================================
+           WORKER URL POPUP
+        ========================================= */
+
+        .worker-url-modal {
+
+            position: fixed;
+
+            inset: 0;
+
+            background: rgba(5, 8, 18, 0.72);
+
+            display: none;
+
+            align-items: center;
+
+            justify-content: center;
+
+            z-index: 9999;
+
+            padding: 20px;
+
+        }
+
+
+        .worker-url-modal.show {
+
+            display: flex;
+
+        }
+
+
+        .worker-url-box {
+
+            width: 100%;
+
+            max-width: 500px;
+
+            background: var(--panel);
+
+            border: 1px solid var(--border);
+
+            border-radius: 14px;
+
+            padding: 22px;
+
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+
+        }
+
+
+        .worker-url-header {
+
+            display: flex;
+
+            justify-content: space-between;
+
+            align-items: center;
+
+            margin-bottom: 18px;
+
+        }
+
+
+        .worker-url-header h2 {
+
+            margin: 0;
+
+            font-size: 18px;
+
+            color: var(--text);
+
+        }
+
+
+        .worker-url-close {
+
+            width: 32px;
+
+            height: 32px;
+
+            border: 1px solid var(--border);
+
+            border-radius: 8px;
+
+            background: var(--panel-light);
+
+            color: var(--muted);
+
+            cursor: pointer;
+
+            font-size: 18px;
+
+        }
+
+
+        .worker-url-close:hover {
+
+            color: var(--text);
+
+        }
+
+
+        .worker-url-input-row {
+
+            display: flex;
+
+            gap: 8px;
+
+        }
+
+
+        .worker-url-input {
+
+            flex: 1;
+
+            min-width: 0;
+
+            height: 42px;
+
+            padding: 0 12px;
+
+            border: 1px solid var(--border);
+
+            border-radius: 8px;
+
+            background: var(--bg);
+
+            color: var(--text);
+
+            font-family: Consolas, Monaco, monospace;
+
+            font-size: 12px;
+
+        }
+
+
+        .worker-url-copy {
+
+            height: 42px;
+
+            padding: 0 15px;
+
+            border: none;
+
+            border-radius: 8px;
+
+            background: var(--accent);
+
+            color: white;
+
+            cursor: pointer;
+
+            font-weight: 600;
+
+        }
+
+
+        .worker-url-copy:hover {
+
+            opacity: 0.9;
+
+        }
+
+
+        .worker-url-note {
+
+            margin-top: 12px;
+
+            color: var(--muted);
+
+            font-size: 11px;
+
+            line-height: 1.5;
+
+        }
+
+
+        .worker-url-copied {
+
+            display: none;
+
+            margin-top: 8px;
+
+            color: var(--green);
+
+            font-size: 11px;
+
+        }
+
+
+        .worker-url-copied.show {
+
+            display: block;
+
+        }
+
+
+
+        /* =========================================
+           SIDEBAR NAV ICONS
+        ========================================= */
+
+        .nav-item {
+
+            display: flex;
+
+            align-items: center;
+
+            gap: 12px;
+
+        }
+
+
+        .nav-icon {
+
+            width: 18px;
+
+            min-width: 18px;
+
+            text-align: center;
+
+            font-size: 14px;
+
+            line-height: 1;
+
+        }
+
+
+
+        /* =========================================
+           COMPUTE GRID CONNECTIONS
+        ========================================= */
+
+        .compute-grid-wrapper {
+
+            position: relative;
+
+        }
+
+
+        .compute-grid-connections {
+
+            position: absolute;
+
+            inset: 0;
+
+            width: 100%;
+
+            height: 100%;
+
+            z-index: 0;
+
+            pointer-events: none;
+
+            overflow: visible;
+
+        }
+
+
+        .compute-grid-connections path {
+
+            fill: none;
+
+            stroke: var(--accent);
+
+            stroke-width: 2;
+
+            stroke-linecap: round;
+
+            stroke-linejoin: round;
+
+            opacity: 0.72;
+
+        }
+
+
+        .compute-grid-connections .connection-node {
+
+            fill: var(--accent);
+
+            opacity: 0.9;
+
+        }
+
+
+        .compute-grid-wrapper .grid-container {
+
+            position: relative;
+
+            z-index: 1;
+
+        }
+
+
+        .compute-grid-wrapper .controller-node,
+
+        .compute-grid-wrapper .workers-container {
+
+            position: relative;
+
+            z-index: 2;
+
+        }
+
+
+
+        /* =========================================
+           RESPONSIVE
+        ========================================= */
+
+        @media (max-width: 600px) {
+
+            .worker-url-input-row {
+
+                flex-direction: column;
+
+            }
+
+
+            .worker-url-copy {
+
+                width: 100%;
+
+            }
+
+        }
+
+    </style>
 
 </head>
 
 
+
 <body>
+
 
     <!-- =========================================
          SIDEBAR
@@ -22,53 +400,69 @@
 
     <aside class="sidebar">
 
-        <div class="logo">
-
-            <div class="logo-icon">
-                ⬡
-            </div>
-
-            <div class="logo-text">
-
-                <h2>ComputeGrid</h2>
-
-                <span>Distributed Computing</span>
-
-            </div>
-
-        </div>
-
 
         <nav>
 
-            <a href="#" class="nav-item active">
 
-                <span>▦</span>
+            <!-- DASHBOARD -->
 
-                Dashboard
+            <a
+                href="/dashboard"
+                class="nav-item active"
+            >
+
+                <span class="nav-icon">
+                    ▦
+                </span>
+
+                <span>
+                    Dashboard
+                </span>
+
+            </a>
+
+
+            <!-- WORKERS -->
+
+            <a
+                href="#workers"
+                class="nav-item"
+            >
+
+                <span class="nav-icon">
+                    ◉
+                </span>
+
+                <span>
+                    Workers
+                </span>
 
             </a>
 
 
-            <a href="#" class="nav-item">
+            <!-- JOBS -->
 
-                <span>◈</span>
+            <a
+                href="/static/jobs.html"
+                class="nav-item"
+            >
 
-                Workers
+                <span class="nav-icon">
+                    ▣
+                </span>
+
+                <span>
+                    Jobs
+                </span>
 
             </a>
 
-
-            <a href="#" class="nav-item">
-
-                <span>▣</span>
-
-                Jobs
-
-            </a>
 
         </nav>
 
+
+
+        <!-- CONTROLLER STATUS -->
 
         <div class="sidebar-bottom">
 
@@ -78,15 +472,20 @@
 
                 <div>
 
-                    <strong>Controller Online</strong>
+                    <strong>
+                        Controller Online
+                    </strong>
 
-                    <small>Live connection</small>
+                    <small>
+                        Controller
+                    </small>
 
                 </div>
 
             </div>
 
         </div>
+
 
     </aside>
 
@@ -101,54 +500,74 @@
 
         <!-- HEADER -->
 
-        <header class="topbar">
+        <div class="topbar">
+
 
             <div>
 
-                <h1>Compute Dashboard</h1>
-
-                <p>
-                    Monitor your distributed computing grid
-                </p>
+                <h1>
+                    Compute Dashboard
+                </h1>
 
             </div>
 
 
             <div class="topbar-right">
 
-                <span class="live-indicator">
+
+                <!-- LIVE -->
+
+                <div class="live-indicator">
 
                     <span class="status-dot"></span>
 
                     LIVE
 
-                </span>
+                </div>
 
+
+                <!-- ONLY WORKER URL BUTTON -->
+
+                <button
+                    id="workerUrlButton"
+                    class="worker-url-btn"
+                    type="button"
+                >
+
+                    Worker URL
+
+                </button>
+
+
+                <!-- REFRESH -->
 
                 <button
                     class="refresh-btn"
-                    id="refreshBtn"
-                    title="Refresh dashboard"
+                    type="button"
+                    onclick="window.location.reload()"
+                    title="Refresh"
                 >
 
                     ↻
 
                 </button>
 
+
             </div>
 
-        </header>
+
+        </div>
 
 
 
-        <!-- =====================================
-             STATISTICS
-        ====================================== -->
+        <!-- =========================================
+             STAT CARDS
+        ========================================== -->
 
-        <section class="stats-grid">
+        <div class="stats-grid">
 
 
-            <!-- TOTAL WORKERS -->
+            <!-- TOTAL -->
 
             <div class="stat-card">
 
@@ -172,12 +591,12 @@
 
 
 
-            <!-- ACTIVE WORKERS -->
+            <!-- ACTIVE -->
 
             <div class="stat-card">
 
                 <div class="stat-icon">
-                    ⚡
+                    ●
                 </div>
 
                 <div>
@@ -196,12 +615,12 @@
 
 
 
-            <!-- IDLE WORKERS -->
+            <!-- IDLE -->
 
             <div class="stat-card">
 
                 <div class="stat-icon">
-                    ✓
+                    ○
                 </div>
 
                 <div>
@@ -220,7 +639,7 @@
 
 
 
-            <!-- AVERAGE LATENCY -->
+            <!-- LATENCY -->
 
             <div class="stat-card">
 
@@ -235,142 +654,151 @@
                     </span>
 
                     <h2 id="averageLatency">
-                        --
+                        -
                     </h2>
 
                 </div>
 
             </div>
 
-        </section>
+
+        </div>
 
 
 
-        <!-- =====================================
+        <!-- =========================================
              COMPUTE GRID
-        ====================================== -->
+        ========================================== -->
 
         <section class="panel">
 
 
             <div class="panel-header">
 
-                <div>
-
-                    <h2>
-                        Compute Grid
-                    </h2>
-
-                    <p>
-                        Connected worker nodes
-                    </p>
-
-                </div>
-
-
-                <span id="workerCountLabel">
-                    0 workers
-                </span>
+                <h2>
+                    Compute Grid
+                </h2>
 
             </div>
 
 
 
-            <div class="grid-container">
+            <!-- CONNECTION WRAPPER -->
+
+            <div
+                class="compute-grid-wrapper"
+                id="computeGridWrapper"
+            >
 
 
-                <!-- CONTROLLER -->
+                <!-- CONNECTION LINES -->
 
-                <div class="controller-node">
-
-
-                    <div class="node-icon controller-icon">
-                        ◈
-                    </div>
-
-
-                    <div class="node-info">
-
-                        <strong>
-                            Controller
-                        </strong>
-
-                        <span>
-                            Central Server
-                        </span>
-
-                    </div>
-
-
-                    <div class="node-status">
-
-                        <span class="status-dot"></span>
-
-                        Online
-
-                    </div>
-
-                </div>
-
-
-
-                <!-- CONNECTION FROM CONTROLLER -->
-
-                <div class="connection-line"></div>
-
-
-
-                <!-- WORKER CARDS -->
-
-                <div
-                    class="workers-container"
-                    id="workersContainer"
+                <svg
+                    id="computeGridConnections"
+                    class="compute-grid-connections"
+                    aria-hidden="true"
                 >
 
-                    <div class="empty-state">
+                    <path
+                        id="mainConnectionPath"
+                    ></path>
 
-                        <div>
-                            ◌
+                    <g
+                        id="workerConnectionPaths"
+                    ></g>
+
+                </svg>
+
+
+
+                <div class="grid-container">
+
+
+                    <!-- CONTROLLER -->
+
+                    <div class="controller-node">
+
+
+                        <div class="node-icon">
+                            C
                         </div>
 
-                        <h3>
-                            No workers connected
-                        </h3>
 
-                        <p>
-                            Waiting for browser workers to connect...
-                        </p>
+                        <div class="node-info">
+
+                            <strong>
+                                Controller
+                            </strong>
+
+                        </div>
+
+
+                        <div class="node-status">
+
+                            <span class="status-dot"></span>
+
+                            Online
+
+                        </div>
+
 
                     </div>
 
+
+
+                    <!-- WORKERS -->
+
+                    <div
+                        id="workersContainer"
+                        class="workers-container"
+                    >
+
+
+                        <div class="empty-state">
+
+                            <div>
+                                ◌
+                            </div>
+
+                            <h3>
+                                No workers connected
+                            </h3>
+
+                            <p>
+                                Waiting for workers...
+                            </p>
+
+                        </div>
+
+
+                    </div>
+
+
                 </div>
 
+
             </div>
+
 
         </section>
 
 
 
-        <!-- =====================================
-             WORKER NODES TABLE
-        ====================================== -->
+        <!-- =========================================
+             WORKER NODES
+        ========================================== -->
 
-        <section class="panel">
+        <section
+            id="workers"
+            class="panel"
+        >
 
 
             <div class="panel-header">
 
-                <div>
-
-                    <h2>
-                        Worker Nodes
-                    </h2>
-
-                    <p>
-                        Detailed worker information
-                    </p>
-
-                </div>
+                <h2>
+                    Worker Nodes
+                </h2>
 
             </div>
 
@@ -378,7 +806,9 @@
 
             <div class="table-wrapper">
 
+
                 <table>
+
 
                     <thead>
 
@@ -393,7 +823,7 @@
                             </th>
 
                             <th>
-                                CPU
+                                CPU Cores
                             </th>
 
                             <th>
@@ -401,15 +831,11 @@
                             </th>
 
                             <th>
+                                IP Address
+                            </th>
+
+                            <th>
                                 Latency
-                            </th>
-
-                            <th>
-                                Last Heartbeat
-                            </th>
-
-                            <th>
-                                Actions
                             </th>
 
                         </tr>
@@ -417,12 +843,14 @@
                     </thead>
 
 
+
                     <tbody id="workerTableBody">
+
 
                         <tr>
 
                             <td
-                                colspan="7"
+                                colspan="6"
                                 class="empty-table"
                             >
 
@@ -432,35 +860,33 @@
 
                         </tr>
 
+
                     </tbody>
+
 
                 </table>
 
+
             </div>
+
 
         </section>
 
 
 
-        <!-- =====================================
-             ORIGINAL WORKER TABLE
-             
-             Kept hidden so the existing
-             workerTable JavaScript reference
-             remains compatible.
-        ====================================== -->
+        <!-- =========================================
+             LEGACY TABLE
+             Kept for dashboard.js compatibility
+        ========================================== -->
 
-        <div style="display: none;">
+        <table
+            id="workerTable"
+            style="display: none;"
+        >
 
-            <table>
+            <tbody></tbody>
 
-                <tbody id="workerTable">
-
-                </tbody>
-
-            </table>
-
-        </div>
+        </table>
 
 
     </main>
@@ -468,10 +894,699 @@
 
 
     <!-- =========================================
-         DASHBOARD JAVASCRIPT
+         WORKER URL POPUP
+         ONLY APPEARS AFTER BUTTON CLICK
     ========================================== -->
 
+    <div
+        id="workerUrlModal"
+        class="worker-url-modal"
+    >
+
+
+        <div
+            class="worker-url-box"
+            role="dialog"
+            aria-modal="true"
+        >
+
+
+            <div class="worker-url-header">
+
+
+                <h2>
+                    Worker URL
+                </h2>
+
+
+                <button
+                    id="workerUrlClose"
+                    class="worker-url-close"
+                    type="button"
+                >
+
+                    ×
+
+                </button>
+
+
+            </div>
+
+
+
+            <div class="worker-url-input-row">
+
+
+                <input
+                    id="workerUrlInput"
+                    class="worker-url-input"
+                    type="text"
+                    readonly
+                >
+
+
+                <button
+                    id="workerUrlCopy"
+                    class="worker-url-copy"
+                    type="button"
+                >
+
+                    Copy
+
+                </button>
+
+
+            </div>
+
+
+
+            <div
+                id="workerUrlCopied"
+                class="worker-url-copied"
+            >
+
+                ✓ Copied
+
+            </div>
+
+
+
+            <div class="worker-url-note">
+
+                Open this URL on another device connected to the same network.
+
+            </div>
+
+
+        </div>
+
+
+    </div>
+
+
+
+    <!-- =========================================
+         WORKER URL SCRIPT
+    ========================================== -->
+
+    <script>
+
+
+        const workerUrlButton =
+            document.getElementById("workerUrlButton");
+
+
+        const workerUrlModal =
+            document.getElementById("workerUrlModal");
+
+
+        const workerUrlClose =
+            document.getElementById("workerUrlClose");
+
+
+        const workerUrlInput =
+            document.getElementById("workerUrlInput");
+
+
+        const workerUrlCopy =
+            document.getElementById("workerUrlCopy");
+
+
+        const workerUrlCopied =
+            document.getElementById("workerUrlCopied");
+
+
+
+        /*
+         * Uses the same host that is serving
+         * the dashboard.
+         */
+
+        const workerUrl =
+            `${window.location.protocol}//${window.location.host}/worker`;
+
+
+
+        /* OPEN POPUP */
+
+        workerUrlButton.addEventListener(
+            "click",
+            () => {
+
+                workerUrlInput.value = workerUrl;
+
+                workerUrlModal.classList.add("show");
+
+            }
+        );
+
+
+
+        /* CLOSE */
+
+        workerUrlClose.addEventListener(
+            "click",
+            () => {
+
+                workerUrlModal.classList.remove("show");
+
+            }
+        );
+
+
+
+        /* CLOSE WHEN CLICKING OUTSIDE */
+
+        workerUrlModal.addEventListener(
+            "click",
+            (event) => {
+
+                if (
+                    event.target === workerUrlModal
+                ) {
+
+                    workerUrlModal.classList.remove("show");
+
+                }
+
+            }
+        );
+
+
+
+        /* ESCAPE */
+
+        document.addEventListener(
+            "keydown",
+            (event) => {
+
+                if (event.key === "Escape") {
+
+                    workerUrlModal.classList.remove("show");
+
+                }
+
+            }
+        );
+
+
+
+        /* COPY */
+
+        workerUrlCopy.addEventListener(
+            "click",
+            async () => {
+
+                try {
+
+                    await navigator.clipboard.writeText(
+                        workerUrl
+                    );
+
+                } catch {
+
+                    workerUrlInput.select();
+
+                    document.execCommand("copy");
+
+                }
+
+
+                workerUrlCopied.classList.add("show");
+
+                workerUrlCopy.textContent =
+                    "Copied!";
+
+
+                setTimeout(
+                    () => {
+
+                        workerUrlCopied.classList.remove(
+                            "show"
+                        );
+
+                        workerUrlCopy.textContent =
+                            "Copy";
+
+                    },
+                    1500
+                );
+
+            }
+        );
+
+
+    </script>
+
+
+
+    <!-- =========================================
+         CONTROLLER → WORKERS CONNECTIONS
+    ========================================== -->
+
+    <script>
+
+        function drawComputeGridConnections() {
+
+            const wrapper =
+                document.getElementById(
+                    "computeGridWrapper"
+                );
+
+            const svg =
+                document.getElementById(
+                    "computeGridConnections"
+                );
+
+            const mainPath =
+                document.getElementById(
+                    "mainConnectionPath"
+                );
+
+            const workerPaths =
+                document.getElementById(
+                    "workerConnectionPaths"
+                );
+
+
+            if (
+                !wrapper ||
+                !svg ||
+                !mainPath ||
+                !workerPaths
+            ) {
+
+                return;
+
+            }
+
+
+            const controller =
+                wrapper.querySelector(
+                    ".controller-node"
+                );
+
+
+            const workersContainer =
+                document.getElementById(
+                    "workersContainer"
+                );
+
+
+            if (
+                !controller ||
+                !workersContainer
+            ) {
+
+                return;
+
+            }
+
+
+            const workerNodes = [
+                ...workersContainer.children
+            ].filter(
+                element =>
+                    !element.classList.contains(
+                        "empty-state"
+                    )
+            );
+
+
+            /*
+             * Clear old lines.
+             */
+
+            mainPath.setAttribute(
+                "d",
+                ""
+            );
+
+            workerPaths.innerHTML = "";
+
+
+            /*
+             * Nothing to connect.
+             */
+
+            if (workerNodes.length === 0) {
+
+                return;
+
+            }
+
+
+            const wrapperRect =
+                wrapper.getBoundingClientRect();
+
+
+            const controllerRect =
+                controller.getBoundingClientRect();
+
+
+            /*
+             * Controller bottom-center.
+             */
+
+            const controllerX =
+                controllerRect.left +
+                controllerRect.width / 2 -
+                wrapperRect.left;
+
+
+            const controllerY =
+                controllerRect.bottom -
+                wrapperRect.top;
+
+
+            /*
+             * Worker top-center positions.
+             */
+
+            const workerPositions =
+                workerNodes.map(
+                    worker => {
+
+                        const rect =
+                            worker.getBoundingClientRect();
+
+                        return {
+
+                            x:
+                                rect.left +
+                                rect.width / 2 -
+                                wrapperRect.left,
+
+                            y:
+                                rect.top -
+                                wrapperRect.top
+
+                        };
+
+                    }
+                );
+
+
+            /*
+             * Find the highest worker.
+             */
+
+            const highestWorkerY =
+                Math.min(
+                    ...workerPositions.map(
+                        worker =>
+                            worker.y
+                    )
+                );
+
+
+            /*
+             * Horizontal bus position.
+             */
+
+            const verticalGap =
+                highestWorkerY -
+                controllerY;
+
+
+            const busY =
+                controllerY +
+                Math.max(
+                    28,
+                    verticalGap * 0.42
+                );
+
+
+            /*
+             * Controller → vertical bus.
+             */
+
+            mainPath.setAttribute(
+                "d",
+                `M ${controllerX} ${controllerY}
+                 L ${controllerX} ${busY}`
+            );
+
+
+            /*
+             * Horizontal bus.
+             */
+
+            if (workerPositions.length > 1) {
+
+                const leftX =
+                    Math.min(
+                        ...workerPositions.map(
+                            worker =>
+                                worker.x
+                        )
+                    );
+
+
+                const rightX =
+                    Math.max(
+                        ...workerPositions.map(
+                            worker =>
+                                worker.x
+                        )
+                    );
+
+
+                const busPath =
+                    document.createElementNS(
+                        "http://www.w3.org/2000/svg",
+                        "path"
+                    );
+
+
+                busPath.setAttribute(
+                    "d",
+                    `M ${leftX} ${busY}
+                     L ${rightX} ${busY}`
+                );
+
+
+                workerPaths.appendChild(
+                    busPath
+                );
+
+            }
+
+
+            /*
+             * Bus → each worker.
+             */
+
+            workerPositions.forEach(
+                worker => {
+
+                    const branch =
+                        document.createElementNS(
+                            "http://www.w3.org/2000/svg",
+                            "path"
+                        );
+
+
+                    branch.setAttribute(
+                        "d",
+                        `M ${worker.x} ${busY}
+                         L ${worker.x} ${worker.y}`
+                    );
+
+
+                    workerPaths.appendChild(
+                        branch
+                    );
+
+
+                    /*
+                     * Small node at worker connection.
+                     */
+
+                    const node =
+                        document.createElementNS(
+                            "http://www.w3.org/2000/svg",
+                            "circle"
+                        );
+
+
+                    node.setAttribute(
+                        "cx",
+                        worker.x
+                    );
+
+
+                    node.setAttribute(
+                        "cy",
+                        worker.y
+                    );
+
+
+                    node.setAttribute(
+                        "r",
+                        "3"
+                    );
+
+
+                    node.setAttribute(
+                        "class",
+                        "connection-node"
+                    );
+
+
+                    workerPaths.appendChild(
+                        node
+                    );
+
+                }
+            );
+
+
+            /*
+             * Controller connection node.
+             */
+
+            const controllerNode =
+                document.createElementNS(
+                    "http://www.w3.org/2000/svg",
+                    "circle"
+                );
+
+
+            controllerNode.setAttribute(
+                "cx",
+                controllerX
+            );
+
+
+            controllerNode.setAttribute(
+                "cy",
+                controllerY
+            );
+
+
+            controllerNode.setAttribute(
+                "r",
+                "3"
+            );
+
+
+            controllerNode.setAttribute(
+                "class",
+                "connection-node"
+            );
+
+
+            workerPaths.appendChild(
+                controllerNode
+            );
+
+        }
+
+
+
+        /*
+         * Redraw when workers are added/removed.
+         */
+
+        const workersContainerForObserver =
+            document.getElementById(
+                "workersContainer"
+            );
+
+
+        if (workersContainerForObserver) {
+
+            const observer =
+                new MutationObserver(
+                    () => {
+
+                        requestAnimationFrame(
+                            drawComputeGridConnections
+                        );
+
+                    }
+                );
+
+
+            observer.observe(
+                workersContainerForObserver,
+                {
+                    childList: true,
+                    subtree: true
+                }
+            );
+
+        }
+
+
+
+        /*
+         * Redraw when window size changes.
+         */
+
+        window.addEventListener(
+            "resize",
+            drawComputeGridConnections
+        );
+
+
+
+        /*
+         * Initial redraws.
+         * Multiple delays make sure the worker
+         * cards have already been rendered by
+         * dashboard.js.
+         */
+
+        window.addEventListener(
+            "load",
+            () => {
+
+                drawComputeGridConnections();
+
+                setTimeout(
+                    drawComputeGridConnections,
+                    100
+                );
+
+                setTimeout(
+                    drawComputeGridConnections,
+                    500
+                );
+
+                setTimeout(
+                    drawComputeGridConnections,
+                    1000
+                );
+
+            }
+        );
+
+
+
+        /*
+         * Keep the lines aligned with dynamic
+         * worker cards.
+         */
+
+        setInterval(
+            drawComputeGridConnections,
+            1000
+        );
+
+    </script>
+
+
+
+    <!-- =========================================
+         EXISTING DASHBOARD JS
+    ========================================== -->
+
+    <script src="/static/js/theme.js"></script>
+
     <script src="/static/js/dashboard.js"></script>
+
 
 </body>
 

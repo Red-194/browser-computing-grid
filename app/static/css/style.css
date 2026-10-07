@@ -613,6 +613,7 @@ tbody tr:hover {
 }
 
 
+
 /* =========================
    RESPONSIVE
    ========================= */
@@ -673,4 +674,20 @@ tbody tr:hover {
     .topbar h1 {
         font-size: 22px;
     }
+}
+
+/* =========================================================
+   JOB STATE COLORS
+   ========================================================= */
+
+#jobState.state-running {
+    color: var(--accent, #6c7cff);
+}
+
+#jobState.state-waiting {
+    color: var(--yellow, #f5c451);
+}
+
+#jobState.state-completed {
+    color: var(--green, #39d98a);
 }

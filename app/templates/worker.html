@@ -1,42 +1,378 @@
 <!DOCTYPE html>
-
 <html lang="en">
 
 <head>
 
     <meta charset="UTF-8">
 
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
 
-    <title>Worker</title>
+    <title>ComputeGrid Worker</title>
 
-    <link rel="stylesheet" href="/static/css/style.css">
+    <link
+        rel="stylesheet"
+        href="/static/css/style.css"
+    >
+
+    <style>
+
+        /* =========================================
+           WORKER PAGE
+        ========================================== */
+
+        body.worker-page {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+            box-sizing: border-box;
+        }
+
+
+        .worker-container {
+            width: 100%;
+            max-width: 620px;
+        }
+
+
+        /* =========================================
+           HEADER
+        ========================================== */
+
+        .worker-header {
+            margin-bottom: 22px;
+        }
+
+
+        .worker-header h1 {
+            margin: 0;
+            color: var(--text);
+            font-size: 30px;
+            font-weight: 700;
+        }
+
+
+        /* =========================================
+           MAIN CARD
+        ========================================== */
+
+        .worker-card {
+            background: var(--panel);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            overflow: hidden;
+        }
+
+
+        /* =========================================
+           CONNECTION STATUS
+        ========================================== */
+
+        .worker-status-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 15px;
+
+            padding: 20px 22px;
+
+            border-bottom: 1px solid var(--border);
+        }
+
+
+        .worker-status-title {
+            color: var(--text);
+            font-size: 15px;
+            font-weight: 650;
+        }
+
+
+        .worker-status-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 7px;
+
+            padding: 7px 10px;
+
+            border-radius: 999px;
+
+            background: rgba(57, 217, 138, 0.08);
+
+            color: var(--green);
+
+            font-size: 11px;
+            font-weight: 600;
+
+            white-space: nowrap;
+        }
+
+
+        .worker-status-dot {
+            width: 7px;
+            height: 7px;
+
+            border-radius: 50%;
+
+            background: currentColor;
+        }
+
+
+        /* =========================================
+           WORKER INFORMATION
+        ========================================== */
+
+        .worker-info {
+            padding: 22px;
+        }
+
+
+        .info-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 20px;
+
+            min-height: 48px;
+
+            border-bottom: 1px solid var(--border);
+        }
+
+
+        .info-row:last-child {
+            border-bottom: none;
+        }
+
+
+        .info-label {
+            color: var(--muted);
+            font-size: 12px;
+        }
+
+
+        .info-value {
+            color: var(--text);
+            font-size: 13px;
+            font-weight: 600;
+            text-align: right;
+        }
+
+
+        .uuid-value {
+            max-width: 360px;
+
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+
+            font-family: Consolas, Monaco, monospace;
+            font-size: 11px;
+            font-weight: 500;
+        }
+
+
+        /* =========================================
+           FOOTER
+        ========================================== */
+
+        .worker-footer {
+            padding: 14px 22px;
+
+            border-top: 1px solid var(--border);
+
+            color: var(--muted);
+
+            font-size: 11px;
+            text-align: center;
+        }
+
+
+        @media (max-width: 600px) {
+
+            body.worker-page {
+                padding: 16px;
+            }
+
+
+            .worker-header h1 {
+                font-size: 25px;
+            }
+
+
+            .worker-status-header {
+                align-items: flex-start;
+                flex-direction: column;
+            }
+
+
+            .info-row {
+                align-items: flex-start;
+                flex-direction: column;
+                justify-content: center;
+
+                gap: 5px;
+
+                padding: 12px 0;
+            }
+
+
+            .info-value {
+                text-align: left;
+            }
+
+
+            .uuid-value {
+                max-width: 100%;
+            }
+
+        }
+
+    </style>
 
 </head>
 
-<body>
 
-<div class="container">
+<body class="worker-page">
 
-    <h1>Browser Computing Grid</h1>
 
-    <h3>Worker Node</h3>
+    <main class="worker-container">
 
-    <div class="card">
 
-        <p><strong>State:</strong> <span id="state">Connecting...</span></p>
+        <!-- =========================================
+             HEADER
+        ========================================== -->
 
-        <p><strong>UUID:</strong> <span id="uuid">-</span></p>
+        <header class="worker-header">
 
-        <p><strong>CPU Cores:</strong> <span id="cores">-</span></p>
+            <h1>
+                Browser Worker
+            </h1>
 
-        <p><strong>Memory:</strong> <span id="memory">-</span></p>
+        </header>
 
-    </div>
 
-</div>
 
-<script type="module" src="/static/js/worker.js"></script>
+        <!-- =========================================
+             WORKER CARD
+        ========================================== -->
+
+        <section class="worker-card">
+
+
+            <!-- STATUS -->
+
+            <div class="worker-status-header">
+
+                <div class="worker-status-title">
+                    Worker Status
+                </div>
+
+
+                <div class="worker-status-badge">
+
+                    <span class="worker-status-dot"></span>
+
+                    <span id="state">
+                        Connecting...
+                    </span>
+
+                </div>
+
+            </div>
+
+
+
+            <!-- INFORMATION -->
+
+            <div class="worker-info">
+
+
+                <!-- UUID -->
+
+                <div class="info-row">
+
+                    <span class="info-label">
+                        Worker ID
+                    </span>
+
+                    <span
+                        id="uuid"
+                        class="info-value uuid-value"
+                    >
+                        -
+                    </span>
+
+                </div>
+
+
+
+                <!-- CPU -->
+
+                <div class="info-row">
+
+                    <span class="info-label">
+                        CPU Cores
+                    </span>
+
+                    <span
+                        id="cores"
+                        class="info-value"
+                    >
+                        -
+                    </span>
+
+                </div>
+
+
+
+                <!-- MEMORY -->
+
+                <div class="info-row">
+
+                    <span class="info-label">
+                        Memory
+                    </span>
+
+                    <span
+                        id="memory"
+                        class="info-value"
+                    >
+                        -
+                    </span>
+
+                </div>
+
+
+            </div>
+
+
+
+            <!-- FOOTER -->
+
+            <div class="worker-footer">
+
+                This browser is available as a compute worker.
+
+            </div>
+
+
+        </section>
+
+
+    </main>
+
+
+
+    <!-- EXISTING WORKER JAVASCRIPT -->
+    <script src="/static/js/theme.js"></script>
+    <script
+        type="module"
+        src="/static/js/worker.js"
+    ></script>
+
 
 </body>
 

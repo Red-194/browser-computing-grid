@@ -47,6 +47,7 @@ let resultPollTimer = null;
 
 const workerSource = new EventSource("/events");
 
+
 workerSource.onmessage = (event) => {
 
     try {
@@ -58,6 +59,7 @@ workerSource.onmessage = (event) => {
                 worker.state === "Connected" ||
                 worker.state === "Idle"
         );
+
 
         if (onlineWorkers.length === 0) {
 
@@ -78,6 +80,7 @@ workerSource.onmessage = (event) => {
                 "var(--green, #39d98a)";
 
         }
+
 
     } catch (error) {
 
@@ -114,6 +117,7 @@ jobForm.addEventListener("submit", async (event) => {
     stopResultPolling();
 
     completed = false;
+
 
     const payload = {
 
@@ -177,7 +181,9 @@ jobForm.addEventListener("submit", async (event) => {
             method: "POST",
 
             headers: {
+
                 "Content-Type": "application/json"
+
             },
 
             body: JSON.stringify(payload)
@@ -211,11 +217,17 @@ jobForm.addEventListener("submit", async (event) => {
         renderAssignments(data.assignments || []);
 
 
+        /*
+         * No worker available:
+         * This is a normal waiting state,
+         * not an error.
+         */
+
         if ((data.assignments || []).length === 0) {
 
             setJobStatus(
-                "The job was created, but no idle workers were available for task assignment.",
-                "error"
+                "Job created · Waiting for an available worker.",
+                "info"
             );
 
             setJobState("Waiting");
@@ -236,6 +248,7 @@ jobForm.addEventListener("submit", async (event) => {
             startResultPolling();
 
         }
+
 
     } catch (error) {
 
@@ -367,12 +380,73 @@ function renderJobSummary(data) {
 }
 
 
+/*
+ * ---------------------------------------------------------
+ * Job state
+ *
+ * Adds a visual state class so the UI can distinguish:
+ *
+ * Running    -> blue/purple
+ * Waiting    -> yellow
+ * Completed  -> green
+ * ---------------------------------------------------------
+ */
+
 function setJobState(state) {
 
     jobStateElement.textContent = state;
 
+    jobStateElement.classList.remove(
+        "state-running",
+        "state-waiting",
+        "state-completed"
+    );
+
+
+    if (state === "Running") {
+
+        jobStateElement.classList.add(
+            "state-running"
+        );
+
+        jobStateElement.style.color =
+            "var(--accent, #6c7cff)";
+
+
+    } else if (state === "Waiting") {
+
+        jobStateElement.classList.add(
+            "state-waiting"
+        );
+
+        jobStateElement.style.color =
+            "var(--yellow, #f5c451)";
+
+
+    } else if (state === "Completed") {
+
+        jobStateElement.classList.add(
+            "state-completed"
+        );
+
+        jobStateElement.style.color =
+            "var(--green, #39d98a)";
+
+
+    } else {
+
+        jobStateElement.style.color = "";
+
+    }
+
 }
 
+
+/*
+ * ---------------------------------------------------------
+ * Progress
+ * ---------------------------------------------------------
+ */
 
 function updateProgress(value) {
 
@@ -380,6 +454,7 @@ function updateProgress(value) {
         0,
         Math.min(100, value)
     );
+
 
     progressFill.style.width =
         `${safeValue}%`;
@@ -420,6 +495,7 @@ function renderAssignments(assignments) {
 
         const row = document.createElement("tr");
 
+
         row.innerHTML = `
             <td>
                 Task ${assignment.task_id}
@@ -435,6 +511,7 @@ function renderAssignments(assignments) {
                 </span>
             </td>
         `;
+
 
         assignmentTable.appendChild(row);
 
@@ -460,10 +537,12 @@ function startResultPolling() {
 
     stopResultPolling();
 
+
     resultPollTimer = setInterval(
         checkJobResult,
         1500
     );
+
 
     checkJobResult();
 
@@ -500,6 +579,7 @@ async function checkJobResult() {
             const imageUrl =
                 URL.createObjectURL(blob);
 
+
             resultImage.src = imageUrl;
 
             resultArea.classList.add("visible");
@@ -513,10 +593,12 @@ async function checkJobResult() {
             progressText.textContent =
                 "Completed";
 
+
             setJobStatus(
                 "Job completed successfully. Final result received.",
                 "success"
             );
+
 
             stopResultPolling();
 
@@ -555,6 +637,7 @@ async function checkJobResult() {
             stopResultPolling();
 
         }
+
 
     } catch (error) {
 
