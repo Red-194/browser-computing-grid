@@ -7,10 +7,10 @@ def _get_class(workload: str, component: str):
         f"app.services.{component}s.{workload}"
     )
 
-    class_name = (
-        "".join(word.capitalize() for word in workload.split("_"))
-        + component.capitalize()
+    workload_name = "SAT" if workload == "sat" else "".join(
+        word.capitalize() for word in workload.split("_")
     )
+    class_name = workload_name + component.capitalize()
 
     return getattr(module, class_name)
 

@@ -178,7 +178,7 @@ Any other `task_type` (e.g. a future workload's name) falls through to an `Err("
 
 ## Workload extension points
 
-Mandelbrot is the current, only implemented workload. The pipeline is structured so that a future workload can be added by extending these points, without redesigning the job/task/dispatch/result flow:
+Mandelbrot and SAT are implemented workloads. Mandelbrot partitions image tiles; SAT partitions assignments to a variable prefix. The pipeline is structured so that another workload can be added by extending these points, without redesigning the job/task/dispatch/result flow:
 
 | Extension point | What it does | Current (`mandelbrot`) implementation |
 |---|---|---|
@@ -317,7 +317,7 @@ Per [scope_updated.md](scope_updated.md):
 
 - Capability-aware and adaptive multi-armed-bandit schedulers (only Round Robin exists today)
 - Fault tolerance: failure detection beyond heartbeat timeout, task reassignment, checkpointing
-- Additional workloads beyond Mandelbrot — the research-scope workload suite is SAT/SMT solving, lossless compression, and regex/text processing (see [scope_updated.md](scope_updated.md) §14); none of these are implemented, and no second workload of any kind currently exists in the codebase
+- Additional workloads beyond Mandelbrot and SAT — the research-scope workload suite also includes lossless compression and regex/text processing (see [scope_updated.md](scope_updated.md) §14); these are not implemented
 - Optional native monitor for richer device metrics
 
 ## Design constraints & notes

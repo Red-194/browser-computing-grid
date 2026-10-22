@@ -1,0 +1,7 @@
+{
+  "workload": "nqueens",
+  "config": {
+    "n": 10,
+    "split_depth": 2
+  }
+}

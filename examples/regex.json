@@ -1,0 +1,20 @@
+{
+  "workload": "regex",
+  "config": {
+    "patterns": [
+      "a+",
+      "^[0-9]+$",
+      "(a+)\\1b"
+    ],
+    "texts": [
+      "aaa",
+      "123",
+      "abc",
+      "45",
+      "aab",
+      "ab",
+      "aaaab"
+    ],
+    "mode": "match"
+  }
+}

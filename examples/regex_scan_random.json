@@ -1,0 +1,17 @@
+{
+  "workload": "regex",
+  "config": {
+    "patterns": [
+      "[a-f]+z",
+      "q.*x"
+    ],
+    "synthetic_texts": {
+      "count": 5000,
+      "min_length": 20,
+      "max_length": 400,
+      "seed": 1
+    },
+    "texts_per_task": 250,
+    "mode": "scan"
+  }
+}

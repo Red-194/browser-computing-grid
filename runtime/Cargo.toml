@@ -13,3 +13,6 @@ serde-wasm-bindgen = "0.6"
 rand = "0.8"
 rand_pcg = "0.3"
 getrandom = { version = "0.2", features = ["js"] }
+lz4_flex = "0.14"
+ruzstd = "0.9"
+fancy-regex = "0.19"
