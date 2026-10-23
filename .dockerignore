@@ -1,0 +1,36 @@
+# Python bytecode / cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+
+# Virtual environment
+venv/
+.venv/
+
+# Rust build artifacts (the pre-built pkg/ is intentionally NOT ignored)
+runtime/target/
+
+# Editor / OS noise
+.vscode/
+.idea/
+*.log
+.DS_Store
+Thumbs.db
+
+# Git
+.git/
+.gitignore
+
+# Docker files themselves (no need to recurse them into the build context)
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# Docs / examples / scripts (not needed at runtime)
+docs/
+examples/
+scripts/
+tests/
+readings.txt
