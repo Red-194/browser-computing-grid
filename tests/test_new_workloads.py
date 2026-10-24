@@ -335,3 +335,53 @@ def test_regex_carries_compile_error_through():
         }
     )
     assert json.loads(aggregator.get_result())["patterns"][0]["compile_error"] == "unclosed group"
+
+
+def test_compression_upload_endpoint_sends_exact_file_bytes():
+    from fastapi.testclient import TestClient
+
+    from app import jobs
+    from app.main import app
+
+    sent = []
+
+    async def fake_send(worker, task):
+        sent.append(task)
+
+    from app.models.worker import WorkerStates
+
+    class FakeWorker:
+        uuid = "w1"
+        state = WorkerStates.IDLE
+
+    original = (jobs.send_task, jobs.workers.copy())
+    jobs.send_task = fake_send
+    jobs.workers["w1"] = FakeWorker()
+    try:
+        raw = bytes(range(256)) * 20  # 5120 bytes, not text
+        client = TestClient(app)
+        response = client.post(
+            "/jobs/compression/upload",
+            files={"file": ("sample.bin", raw)},
+            data={"variants": "lz4", "chunk_size": "2000"},
+        )
+        assert response.status_code == 200
+        assert response.json()["filename"] == "sample.bin"
+        assert b"".join(base64.b64decode(t.config.data_base64) for t in sent) == raw
+        assert len(sent) == 3
+
+        bad = client.post(
+            "/jobs/compression/upload",
+            files={"file": ("empty.bin", b"")},
+        )
+        assert bad.status_code == 422
+        bad = client.post(
+            "/jobs/compression/upload",
+            files={"file": ("x.bin", b"abc")},
+            data={"variants": "gzip"},
+        )
+        assert bad.status_code == 422
+    finally:
+        jobs.send_task, workers = original
+        jobs.workers.clear()
+        jobs.workers.update(workers)

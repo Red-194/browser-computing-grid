@@ -175,6 +175,16 @@ curl -X POST http://127.0.0.1:8000/jobs -H "Content-Type: application/json" -d '
 }'
 ```
 
+To compress a **real file** (max 64 MiB), upload it instead of using `synthetic_size`.
+Each chunk is sent to a worker, compressed with every variant, decompressed again to
+check it round-trips, and the sizes and speeds are totalled per variant:
+
+```bash
+curl -X POST http://127.0.0.1:8000/jobs/compression/upload   -F "file=@/path/to/your/file" -F "variants=lz4,zstd-fastest" -F "chunk_size=262144"
+# or, with polling and printing the result:
+python scripts/compress_file.py /path/to/your/file
+```
+
 **`regex`** - every pattern against every batch of `texts_per_task` texts.
 `mode` is `match` (does it match?) or `scan` (count every match). A bad pattern
 is reported as `compile_error`, and `limit_hits` counts texts where the engine hit
