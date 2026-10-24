@@ -1,6 +1,6 @@
 # Validation Report
 
-**Scope:** the current typed job/aggregator architecture (discriminated-union `JobSubmission`, dynamic splitter/aggregator loading, generic `aggregator.get_result()`/`result_type` result API) — Mandelbrot is the only implemented workload.
+**Scope:** the current typed job/aggregator architecture (typed `JobSubmission`, dynamic splitter/aggregator loading, generic `aggregator.get_result()`/`result_type` result API). Mandelbrot and SAT are implemented; this historical validation report only records the Mandelbrot run.
 
 ## Summary
 

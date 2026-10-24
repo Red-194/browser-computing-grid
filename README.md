@@ -46,17 +46,25 @@ The computation is decomposed into many small, independent tasks and physically 
 
 See [docs/architecture.md](docs/architecture.md) for the full breakdown of every module.
 
-## Current workload: Mandelbrot
+## Current workloads
 
 The job/task pipeline is designed to be workload-agnostic: a job carries a typed, workload-specific config; a **splitter** turns a job into tasks; a WASM **kernel** executes each task; and an **aggregator** combines task results back into a final job result. All three are resolved dynamically by workload name (`app/services/loader.py`).
 
-Today, **Mandelbrot is the only implemented workload**, and it is the reference/demo workload for the whole pipeline:
+Mandelbrot is the visual reference workload. SAT is a distributed CNF search
+workload: the controller partitions the first `split_depth` variables into
+independent assignments, sends each assignment cube to a worker, and returns
+the first satisfying model found (or UNSAT once every cube fails).
 
 | Workload | Job/task config | Splitter | WASM kernel | Aggregator | Status |
 |---|---|---|---|---|---|
 | `mandelbrot` | ✅ (`MandelbrotConfig` / `MandelbrotTaskConfig`) | ✅ | ✅ | ✅ | **Fully working end-to-end** |
+| `sat` | ✅ (`SATConfig` / `SATTaskConfig`) | ✅ | ✅ | ✅ | **Requires rebuilt WASM runtime** |
+| `sat_batch` | ✅ (`SATBatchConfig`; tasks reuse `SATTaskConfig`) | ✅ | ✅ (reuses `sat`) | ✅ | **Python only; same WASM as `sat`** |
+| `compression` | ✅ (`CompressionConfig` / `CompressionTaskConfig`) | ✅ | ✅ (LZ4, Zstandard) | ✅ | **Requires rebuilt WASM runtime** |
+| `regex` | ✅ (`RegexConfig` / `RegexTaskConfig`) | ✅ | ✅ (`fancy-regex`) | ✅ | **Requires rebuilt WASM runtime** |
+| `nqueens` | ✅ (`NQueensConfig` / `NQueensTaskConfig`) | ✅ | ✅ | ✅ | **Requires rebuilt WASM runtime** |
 
-Other workloads (e.g. Monte Carlo, matrix multiplication) are **not currently implemented** — there is no job model, splitter, kernel, or aggregator for them in this codebase. The extension points that would let a future workload be added without redesigning the pipeline are described in [docs/architecture.md](docs/architecture.md).
+Other workloads (e.g. Monte Carlo, matrix multiplication) are **not currently implemented**. The extension points that would let a future workload be added without redesigning the pipeline are described in [docs/architecture.md](docs/architecture.md).
 
 ## Scheduler
 
@@ -113,7 +121,87 @@ curl -X POST http://127.0.0.1:8000/jobs \
   }'
 ```
 
+### Submit a SAT job
+
+Clauses use standard DIMACS literals: `1` means variable 1, `-1` means its
+negation, and each inner array is OR-ed while clauses are AND-ed. `split_depth`
+creates `2^split_depth` independent worker tasks.
+
+```bash
+curl -X POST http://127.0.0.1:8000/jobs \
+  -H "Content-Type: application/json" \
+  -d '{
+    "workload": "sat",
+    "config": {
+      "num_variables": 3,
+      "clauses": [[1, 2], [-1, 3], [-2, -3]],
+      "split_depth": 2
+    }
+  }'
+```
+
+Once complete, `GET /jobs/<job_id>/result` returns JSON such as
+`{"satisfiable":true,"model":[1,-2,3]}`. Rebuild `runtime/pkg/` after pulling
+the SAT kernel source so browser workers can execute it.
+
 The response includes the generated `job_id` and the task→worker assignments made at submission time.
+
+### More workloads
+
+All of these use the same `POST /jobs` call and the same `GET /jobs/<job_id>/result`
+(they all return JSON). Rebuild `runtime/pkg/` first (see `docs/commands.md`).
+
+**`sat_batch`** - many independent SAT instances, one task each. Give `instances`,
+or let the controller make random 3-SAT formulas (about 4.26 clauses per variable
+is the hardest region, so run times vary the most):
+
+```bash
+curl -X POST http://127.0.0.1:8000/jobs -H "Content-Type: application/json" -d '{
+  "workload": "sat_batch",
+  "config": {"random_3sat": {"count": 200, "num_variables": 40, "num_clauses": 170, "seed": 1}}
+}'
+```
+
+**`compression`** - cuts the data into `chunk_size` pieces and tries every
+variant (`lz4`, `zstd-fastest`) on every piece. Use
+`synthetic_size` for made-up test data (max 64 MiB) or `data_base64` for your own.
+The result has size ratio, speed and round-trip checks per variant:
+
+```bash
+curl -X POST http://127.0.0.1:8000/jobs -H "Content-Type: application/json" -d '{
+  "workload": "compression",
+  "config": {"synthetic_size": 8000000, "chunk_size": 262144,
+             "variants": ["lz4", "zstd-fastest"]}
+}'
+```
+
+**`regex`** - every pattern against every batch of `texts_per_task` texts.
+`mode` is `match` (does it match?) or `scan` (count every match). A bad pattern
+is reported as `compile_error`, and `limit_hits` counts texts where the engine hit
+`backtrack_limit`:
+
+```bash
+curl -X POST http://127.0.0.1:8000/jobs -H "Content-Type: application/json" -d '{
+  "workload": "regex",
+  "config": {"patterns": ["[a-f]+z", "(a+)\\1b"],
+             "synthetic_texts": {"count": 5000, "min_length": 20, "max_length": 400, "seed": 1},
+             "texts_per_task": 250, "mode": "scan", "backtrack_limit": 100000}
+}'
+```
+
+**`nqueens`** - counts all solutions. `split_depth` fixes the queens on the first
+rows, giving one task per safe prefix. Tasks are very uneven, which is the point.
+`n=8` has 92 solutions and `n=12` has 14200. Try `n` up to about 15 for a demo:
+
+```bash
+curl -X POST http://127.0.0.1:8000/jobs -H "Content-Type: application/json" -d '{
+  "workload": "nqueens",
+  "config": {"n": 13, "split_depth": 3}
+}'
+```
+
+Every result also shows execution times, which come from the worker's own
+`execution_time_ms`.
 
 ### Retrieve the result
 
@@ -139,15 +227,16 @@ See [docs/commands.md](docs/commands.md) for the full command reference, includi
 ## Project status
 
 - **Controller lifecycle** (worker registration, heartbeat, latency, disconnect/remove, dashboard) — complete and working.
-- **Job pipeline** (submit → validate → split → schedule → dispatch → execute → aggregate → generic result) — complete and working for `mandelbrot`.
+- **Job pipeline** (submit → validate → split → schedule → dispatch → execute → aggregate → generic result) — complete for Mandelbrot and SAT; SAT browser execution requires rebuilding the WASM package.
 - **Scheduler** — Round Robin only; capability-aware and adaptive/bandit scheduling described in [docs/scope_updated.md](docs/scope_updated.md) are research/roadmap items, not implemented.
-- **Additional workloads** — not implemented; the architecture is designed to support them (see [docs/architecture.md](docs/architecture.md)) but no second workload exists in the codebase today.
+- **Additional workloads** — SAT is now the second workload; further workloads remain unimplemented.
 
 Validated with a single-worker Mandelbrot run and a three-worker run across a laptop, phone, and Raspberry Pi 5 (2048×2048 image, 128×128 tiles, 256 tasks, all results aggregated into a final image). See [docs/validation.md](docs/validation.md) for details.
 
 ## Known limitations
 
-- Only `mandelbrot` is a complete, runnable workload.
+- SAT workers require `runtime/pkg/` to be rebuilt from the included Rust
+  source; the existing checked-in WASM binary predates this workload.
 - No fault tolerance — a worker that disconnects mid-task does not have its task reassigned; the job simply never completes.
 - `WorkerStates.BUSY` is defined but never assigned — the scheduler does not mark a worker busy during task execution, so a worker can in principle be handed more tasks than it can run concurrently.
 - Plain `ws://` (no TLS) — fine for LAN/dev use, not for production.

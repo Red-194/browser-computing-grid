@@ -1,0 +1,11 @@
+{
+  "workload": "sat_batch",
+  "config": {
+    "random_3sat": {
+      "count": 50,
+      "num_variables": 30,
+      "num_clauses": 128,
+      "seed": 1
+    }
+  }
+}

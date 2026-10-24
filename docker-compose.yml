@@ -1,0 +1,24 @@
+# ── Browser Computing Grid – Docker Compose ──────────────────────────────────
+# Starts the FastAPI controller.  Workers are browser tabs — nothing to compose
+# for them; just open http://localhost:8000/worker in any browser.
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+  controller:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: browser-computing-grid:latest
+    container_name: bcg-controller
+    ports:
+      # Host:Container — change the left side if 8000 is already taken
+      - "8000:8000"
+    environment:
+      PYTHONUNBUFFERED: "1"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/worker')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s

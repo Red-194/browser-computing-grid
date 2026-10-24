@@ -50,11 +50,7 @@ computeWorker.onmessage = (event) => {
                 type: "task_result",
                 job_id: task.job_id,
                 task_id: task.task_id,
-                result: {
-                    row_block: result.row_block,
-                    col_block: result.col_block,
-                    pixel_buffer: result.pixel_buffer
-                },
+                result,
                 execution_time_ms: message.execution_time_ms
             }));
 

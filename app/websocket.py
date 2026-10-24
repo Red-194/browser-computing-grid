@@ -137,7 +137,16 @@ async def websocket_endpoint(websocket: WebSocket):
                     print(f"No aggregator found for job {job_id}")
                     continue
 
-                aggregator.add_result(raw["result"])
+                result = raw["result"]
+                # Aggregators that need idempotence (such as SAT) can use the
+                # task id without changing the worker-to-controller protocol.
+                if isinstance(result, dict):
+                    result = {
+                        **result,
+                        "_task_id": task_id,
+                        "_execution_time_ms": raw.get("execution_time_ms"),
+                    }
+                aggregator.add_result(result)
                 total_tasks = task_counts.get(str(job_id))
 
                 print(
