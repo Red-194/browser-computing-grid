@@ -2,26 +2,31 @@ import math
 import logging
 import time
 from datetime import datetime
+from uuid import UUID
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from .events import notify_dashboards
 from .models.protocol import HeartbeatMessage, PongMessage, RegisterAckMessage, RegisterMessage
 from .models.worker import Worker, WorkerMetadata, WorkerStates
-from .registry import workers, aggregators, task_counts, completed_jobs, job_start_times
+from .registry import workers, worker_pcbs
+from .models.pcb import WorkerPCB
 
 router = APIRouter()
 logger = logging.getLogger("grid.websocket")
 
-async def send_task(worker, task):
+async def send_task(worker, task, attempt: int | None = None):
     if worker.websocket is None:
         return False
 
     try:
-        await worker.websocket.send_json({
+        payload = {
             "type": "task",
             "task": task.model_dump(mode="json")
-        })
+        }
+        if attempt is not None:
+            payload["task"]["attempt"] = attempt
+        await worker.websocket.send_json(payload)
 
         return True
 
@@ -82,6 +87,16 @@ async def websocket_endpoint(websocket: WebSocket):
                     )
 
                     workers[worker.uuid] = worker
+
+                worker_pcb = worker_pcbs.get(worker.uuid)
+                if worker_pcb is None:
+                    worker_pcb = WorkerPCB(worker.uuid, capacity=max(1, worker.cores))
+                    worker_pcbs[worker.uuid] = worker_pcb
+                else:
+                    worker_pcb.mark_online()
+                worker_pcb.touch()
+                from .jobs import sync_worker_state
+                sync_worker_state(worker.uuid)
                 
                 worker_uuid = worker.uuid
 
@@ -107,6 +122,7 @@ async def websocket_endpoint(websocket: WebSocket):
                     continue
 
                 worker.last_heartbeat = datetime.now()
+                worker_pcb.touch()
                 logger.debug(
                     "Heartbeat received from %s at %s",
                     worker.uuid,
@@ -123,6 +139,7 @@ async def websocket_endpoint(websocket: WebSocket):
 
                 latency = (time.perf_counter() - message.timestamp) * 1000
                 worker.latency = math.ceil(latency)
+                worker_pcbs[worker.uuid].touch()
 
                 logger.debug("Latency %s: %s ms", worker.uuid, worker.latency)
 
@@ -133,12 +150,6 @@ async def websocket_endpoint(websocket: WebSocket):
                 job_id = raw["job_id"]
                 task_id = raw["task_id"]
 
-                aggregator = aggregators.get(str(job_id))
-
-                if aggregator is None:
-                    logger.error("No aggregator found for job %s", job_id)
-                    continue
-
                 result = raw["result"]
                 # Aggregators that need idempotence (such as SAT) can use the
                 # task id without changing the worker-to-controller protocol.
@@ -148,34 +159,22 @@ async def websocket_endpoint(websocket: WebSocket):
                         "_task_id": task_id,
                         "_execution_time_ms": raw.get("execution_time_ms"),
                     }
-                try:
-                    aggregator.add_result(result)
-                except Exception:
-                    logger.error(
-                        "Failed to aggregate result for job %s task %s",
-                        job_id,
-                        task_id,
-                        exc_info=True,
-                    )
-                    raise
-                total_tasks = task_counts.get(str(job_id))
-
                 logger.debug(
                     "Task result received: job=%s task=%s execution_time=%s ms",
                     job_id,
                     task_id,
-                    raw["execution_time_ms"],
+                    raw.get("execution_time_ms"),
                 )
 
-                if aggregator.is_complete(total_tasks):
-
-                    elapsed = (
-                        time.perf_counter()
-                        - job_start_times[str(job_id)]
-                    )
-                    completed_jobs.add(str(job_id))
-                    logger.info("Job %s aggregation complete", job_id)
-                    logger.info("Job %s total execution time: %.3f seconds", job_id, elapsed)
+                from .jobs import handle_task_result
+                await handle_task_result(
+                    worker_uuid,
+                    UUID(str(job_id)),
+                    task_id,
+                    result,
+                    raw.get("attempt"),
+                    raw.get("execution_time_ms"),
+                )
 
 
 
@@ -186,9 +185,10 @@ async def websocket_endpoint(websocket: WebSocket):
             worker = workers.get(worker_uuid)
 
             if worker is not None:
+                from .jobs import handle_worker_failure
+                await handle_worker_failure(worker.uuid, "worker disconnected")
                 worker.websocket = None
                 worker.latency = 0
-                worker.state = WorkerStates.OFFLINE
 
                 logger.info("Worker disconnected: %s", worker.uuid)
                 await notify_dashboards()

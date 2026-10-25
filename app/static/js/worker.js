@@ -50,6 +50,7 @@ computeWorker.onmessage = (event) => {
                 type: "task_result",
                 job_id: task.job_id,
                 task_id: task.task_id,
+                attempt: task.attempt,
                 result,
                 execution_time_ms: message.execution_time_ms
             }));

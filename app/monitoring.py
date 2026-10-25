@@ -53,6 +53,8 @@ async def monitor_heartbeats():
             if now - worker.last_heartbeat > timedelta(seconds=HEARTBEAT_TIMEOUT):
 
                 logger.warning("Heartbeat timeout: %s", worker.uuid)
+                from .jobs import handle_worker_failure
+                await handle_worker_failure(worker.uuid, "heartbeat timeout")
 
                 try:
                     await worker.websocket.close()
