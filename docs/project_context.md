@@ -33,7 +33,7 @@ Sprint-based. Done:
 - Compression with real file upload (`POST /jobs/compression/upload`, `scripts/compress_file.py`).
 - **Control blocks (PCBs)** in `app/models/pcb.py`, with tests in `tests/test_pcb.py` (see section 5). These are built and tested on their own; connecting them to the controller is the current step.
 
-Next (Decided): connect the PCBs to the controller, then recovery from a killed worker, then a speed-aware scheduler.
+Next (Decided): connect the PCBs to the controller, then recovery from a killed worker, then a speed-aware scheduler. The owner wants to keep discussing the design first; no controller code has been written (see the integration plan in section 5).
 
 ## 4. What the current scheduler placeholder cannot do
 
@@ -62,8 +62,37 @@ Next (Decided): connect the PCBs to the controller, then recovery from a killed 
 - All three can be saved and loaded as plain dicts (`to_dict()` / `from_dict()`). Times are `time.monotonic()` values and only mean something to the process that made them.
 - The module imports only `WorkerStates` from `app/models/worker.py` and does no I/O.
 
+### How the control blocks behave
+
+What the scheduler is for: keep a list of waiting tasks, give a task to a worker when it has a free slot, keep track of who holds what, notice a worker that disappeared or a task that took too long, and put lost tasks back in the list.
+
+Task life (DONE and FAILED are final):
+
+```
+WAITING --assign--> RUNNING --complete--> DONE
+   ^                   |
+   +----- requeue -----+--- (retries used up) ---> FAILED
+```
+
+| Event | What the records do |
+|---|---|
+| Task handed to a worker | Task goes RUNNING under a new attempt number; the worker's slot is taken |
+| Result with the current attempt, from the worker holding it | Accepted: task DONE, digest stored, slot freed |
+| Result with an older attempt, or from the wrong worker | Stale: ignored, stored with its worker and digest; never an error |
+| Worker disconnects | `mark_offline()` returns every `(task, attempt)` it held; each is requeued for exactly that attempt |
+| Task runs longer than the timeout | Requeued for that attempt. If the disconnect handler also fires, the second requeue does nothing |
+| Requeue with retries left | Task back to WAITING, retry count up |
+| Requeue with no retries left | Task FAILED, and so is the job (it can no longer complete) |
+| Two answers differ for one task | `disagreements()` lists the stale ones; a worker is faulty (tasks are deterministic) |
+| Worker answers for a task already taken away | `release()` returns false instead of failing; its slot frees only when it answers or disconnects |
+
+Reasoning behind the "current attempt wins" rule (the project owner's proposal): the worker that was timed out or lost is the less trustworthy one, and a fenced attempt number stays safe when messages arrive out of order or from several controllers. The cost is some wasted work when the old worker had actually finished, which is small at 10 devices. Neither "first answer wins" nor "current attempt wins" detects a wrong answer, which is why stale answers are compared, not discarded.
+
+The digest (fingerprint of an answer) is separate from the worker's uuid. The uuid says who answered; the digest says what was answered. Two workers with the same answer have the same digest. The digest must leave out per-worker details such as execution time.
+
 ### Proposed (defaults chosen, not yet confirmed)
 
+- The retry limit of 3 and the worker capacity of 2 were chosen by the assistant, not the project owner. Both are single constants and per-record overrides.
 - Records live in memory next to `app/registry.py`, behind one small interface.
 - One background checker looks for timed-out tasks every second or two, instead of a timer per task.
 - Task timeout starts generous (for example 60 s); a speed-based timeout can come later because devices differ by about 5x.
@@ -84,6 +113,27 @@ Next (Decided): connect the PCBs to the controller, then recovery from a killed 
 3. Claim before send: an `await` during the send could let another event pick the same task or worker.
 4. **Possible bug in existing code, not verified:** in `app/websocket.py`, when a tab reloads, the old socket's close event can run after the new socket registers and mark the live worker Offline, because it looks the worker up by uuid. This might be connected to the hang seen in testing.
 5. For several controllers (future): double claim, stale controller, split brain. These need compare-and-set on a record version, leases, and one owner per record.
+
+### The control blocks in a decentralized setting (discussed, not built)
+
+- The central question is who owns each record and how other nodes learn about changes. Options: shard by owner (each controller owns its own jobs and connected workers; simple, but a dead controller loses its records unless they are copied), a shared store (any controller can take over, but it depends on that store), or fully peer to peer (as Pando does with WebRTC; hardest to make reliable).
+- Already in the design: attempt numbers (act as fencing tokens), records that can be saved and loaded as plain dicts, and operations that are safe to repeat (stale results and repeated requeues are normal outcomes, not errors).
+- Still needed for several controllers: a version number on each record with compare-and-set, leases that must be renewed instead of failure detection, and time that does not depend on one machine's clock (the PCB uses the local monotonic clock, which is right for local timeouts only).
+- Worker data splits in two: connection state (online, busy) belongs to the controller the worker is connected to; speed history is what other controllers would want to share.
+- Decision for now (Decided): do not build any of this. The 10-device demo uses one controller. The record format keeps the option open.
+
+### Integration plan (not started: the project owner wants to discuss before any controller code)
+
+1. When a job is submitted, create its records and put its tasks in a waiting list.
+2. Dispatch pull-style: a task goes to a worker with a free slot; claim (mark running) first, then send, and undo if the send fails.
+3. On a result, accept it by attempt and free the slot; keep stale answers for comparison.
+4. On disconnect or timeout, requeue exactly the affected attempts.
+
+A possible safe first step is a "shadow mode": the records observe what the controller already does (job submitted, task sent, result received, worker connected or lost) without changing dispatch, so the records can be checked against real traffic before they take over. This was tried briefly, then reverted at the owner's request because the discussion was not finished. Note that the current up-front dispatch can hand one worker more tasks than its capacity, so worker slots cannot be mirrored in shadow mode.
+
+Checks to run after each step: `pytest tests/`, `python scripts/test_all_workloads.py` with at least one worker tab, and a real test with two devices.
+
+Still to build after the wiring: the digest function and per-workload result validation, per-worker per-workload speed tracking, the speed-aware picking rule, and the timeout checker.
 
 ### Candidate scheduler ideas (Proposed, none confirmed new)
 
