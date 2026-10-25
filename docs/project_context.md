@@ -196,7 +196,47 @@ Observations:
 - The compression kernel was checked against reference decoders (Python `lz4` and `zstandard`): outputs from `lz4_flex` and `ruzstd` decoded back to the original bytes.
 - Compression uses `lz4_flex` (LZ4 block format, size prepended) and `ruzstd` at its `Fastest` level only, because both are pure Rust and compile to WASM cleanly. Each chunk is compressed independently.
 
-## 10. Practical notes
+## 10. Backlog and notes for later
+
+Not scheduled. Nothing here has been built.
+
+### N-Queens kernel optimization (noted 2026-10-25)
+
+`runtime/src/kernels/nqueens.rs` already uses the standard bitmask search, so remaining gains are constant factors. None of these were measured.
+
+- Mirror symmetry: search only the left half of the first queen's columns and double the count (the middle column for odd N needs separate handling). Roughly 2x less work. The splitter would apply it when making prefixes. Full rotation and reflection symmetry could give up to about 8x but is fiddly.
+- Count the last row directly with a popcount instead of recursing into it.
+- The `nodes` counter is useful for showing how uneven tasks are; keep it or compute it only in a separate mode.
+- Smaller tweaks (32-bit masks for small N, a loop instead of recursion) should give little.
+- Cautions: N-Queens is a measuring tool for the scheduler, not the contribution; a faster kernel only means a larger N is needed for the same workload. Keep the current version as the baseline for experiments. Test against known counts (N=12 is 14,200; N=14 is 365,596) and a simple reference implementation, because symmetry changes are easy to get subtly wrong. Measure before and after.
+
+### Regex findings (checked 2026-10-25)
+
+- 15 small-input cases ran correctly through the real pipeline (one text, empty text, empty pattern, backreference, non-ASCII, synthetic texts with count 1 or length 0). No hangs or errors were reproduced; the exact failure the project owner saw is still unknown (input, expected result, got result and device were not given).
+- Scan mode counts zero-length matches differently from Python and JavaScript: `a*` on `baaac` gives 3 in the grid and 4 in Python. The Rust `fancy-regex` engine skips an empty match right after a non-empty one. Options: document it, or change the kernel to match Python.
+- If a WASM kernel ever throws, `app/static/js/worker.js` only logs the error to the browser console and never reports it to the controller, so the job would hang with no error message. Not triggered by valid input so far. Worth fixing as part of the reliability work.
+
+### Server freezes when a large job is submitted (found 2026-10-25, not fixed)
+
+A teammate submitted a request through the interactive API page (`/docs`, Swagger) and the server did not respond for a long time. Reproduced:
+
+- `POST /jobs` splits the job inside the async handler (`submit_job` in `app/jobs.py`), on the same thread that serves every other request. While it runs, the whole server is frozen: `GET /worker` timed out, the process sat at 100% CPU with memory growing past 1 GB, and workers would miss heartbeats and drop offline.
+- Worst case is N-Queens. The API allows `n` up to 24 and `split_depth` up to `n` with no cap on the task count. `nqueens n=20 split_depth=12` got no reply in 90 s. Task counts for the prefix list: n=10 depth 5 gives 3,916; n=12 depth 6 gives 52,856; n=14 depth 6 gives 241,484; n=16 depth 6 gives 838,816 (2.8 s to build); n=16 depth 7 gives 3,998,456 (27 s to build, before building task objects or messages).
+- Swagger's default body for `POST /jobs` is a Mandelbrot job with every number 0. It returns a plain `500 Internal Server Error` (the splitter raises `ValueError` for `tile_size: 0`) instead of a clear 422.
+- Big jobs echo everything back: a Mandelbrot job with 250,000 tasks returned a 16 MB response, which makes the Swagger page slow.
+- The submit request also waits until every task has been sent to its worker, so a large job over a slow link (for example a phone hotspot) is slow to answer even when nothing is wrong.
+
+Fix options (Proposed, none done): (1) cap the number of tasks a job may create, checked before splitting, so a bad request gets a clear 422; (2) run the splitting off the main thread (for example `asyncio.to_thread`) so the server and heartbeats keep working; (3) put sensible examples in the API schema so the `/docs` default is not all zeros, and return a clear error for values like `tile_size: 0`; (4) shorten the reply for large jobs. Suggested first: 1 and 3. Number 2 also supports the reliability aim.
+
+The server must be started from the project root, because `app/main.py` mounts `app/static` and `runtime/pkg`, and `app/routes.py` reads `app/templates`, all as paths relative to the launch folder. From another folder (for example `./docs`) it stops with `ModuleNotFoundError: No module named 'app'`, and with `--app-dir ..` it stops with `Directory 'app/static' does not exist`. `docs/commands.md` already says to run from the root. It is also stale: it says Mandelbrot is the only workload, lists only five packages in `requirements.txt`, and its "force kill" command (`Stop-Process -Name "python"`) stops every Python process on the machine.
+
+### Regex minimum sizes (checked 2026-10-25)
+
+- Smallest job: one pattern and one text, one task. An empty-string pattern and an empty-string text are both valid.
+- Minimums: at least 1 pattern; at least 1 text (an empty list is rejected); synthetic `count` at least 1; `min_length` and `max_length` 0 or more with `min_length` not above `max_length`; `texts_per_task` at least 1; `backtrack_limit` at least 1. Giving neither or both of `texts` and `synthetic_texts` is rejected. All rejections are clear 422 errors.
+- A single regex task takes a fraction of a millisecond, so a tiny job costs more to send than to run.
+
+## 11. Practical notes
 
 - `runtime/pkg/` is intentionally committed. The app serves it at `/runtime` and the Dockerfile copies it without building. Rebuild it with the commands in `commands.md` (`cargo build --release --target wasm32-unknown-unknown`, then `wasm-bindgen`), not `wasm-pack`. `runtime/target/` is a build artifact and is ignored.
 - To test across devices, start the controller with `--host 0.0.0.0` and open `http://<controller-ip>:8000/worker` (plain `http://`) on the other device. Windows Firewall may need an inbound rule for port 8000.
