@@ -6,9 +6,15 @@ Start the server and open at least one /worker tab first, then run:
     python scripts/test_all_workloads.py http://192.168.1.23:8000
 """
 import json
+import logging
 import sys
 import time
 import urllib.request
+
+from app.logging_config import configure_logging
+
+configure_logging()
+logger = logging.getLogger("grid.cli.test_all_workloads")
 
 BASE = sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8000"
 TIMEOUT_SECONDS = 120
@@ -123,24 +129,27 @@ def main():
     failures = 0
 
     for workload, name, config, check in TESTS:
-        print(f"\n{name}")
+        logger.info("%s", name)
         try:
             job = post_job(workload, config)
         except Exception as error:
-            print(f"  FAIL  could not submit the job: {error}")
+            logger.error("FAIL could not submit the job: %s", error)
             failures += 1
             continue
 
         assigned = len(job["assignments"])
-        print(f"  {job['task_count']} tasks, {assigned} sent to workers")
+        logger.info("%d tasks, %d sent to workers", job["task_count"], assigned)
         if assigned == 0:
-            print("  FAIL  no worker is connected. Open /worker in a browser tab first.")
+            logger.error("FAIL no worker is connected. Open /worker in a browser tab first.")
             failures += 1
             continue
 
         result = wait_for_result(job["job"]["job_id"])
         if result is None:
-            print(f"  FAIL  no result after {TIMEOUT_SECONDS}s. Check the worker tab console (F12).")
+            logger.error(
+                "FAIL no result after %ss. Check the worker tab console (F12).",
+                TIMEOUT_SECONDS,
+            )
             failures += 1
             continue
 
@@ -148,11 +157,11 @@ def main():
         if problems:
             failures += 1
             for problem in problems:
-                print(f"  FAIL  {problem}")
+                logger.error("FAIL %s", problem)
         else:
-            print("  PASS")
+            logger.info("PASS")
 
-    print(f"\n{len(TESTS) - failures} of {len(TESTS)} passed")
+    logger.info("%d of %d passed", len(TESTS) - failures, len(TESTS))
     sys.exit(1 if failures else 0)
 
 

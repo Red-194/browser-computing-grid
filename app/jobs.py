@@ -1,4 +1,5 @@
 from uuid import uuid4, UUID
+import logging
 import time
 
 import base64
@@ -17,6 +18,7 @@ router = APIRouter(prefix="/jobs", tags=["Jobs"])
 
 # Current scheduler mode
 scheduler = RandomScheduler()
+logger = logging.getLogger("grid.jobs")
 
 @router.post("")
 async def submit(job: JobSubmission):
@@ -65,6 +67,8 @@ async def submit_job(job: JobSubmission):
 
     splitter = get_splitter(job.workload)
     tasks = splitter.split(job)
+    logger.info("Job %s submitted for workload %s", job.job_id, job.workload)
+    logger.info("Job %s splitting complete: %d tasks", job.job_id, len(tasks))
 
     aggregator = get_aggregator(job.workload, job.config)
     aggregators[str(job.job_id)] = aggregator
@@ -74,8 +78,15 @@ async def submit_job(job: JobSubmission):
         tasks,
         list(workers.values())
     )
+    logger.debug(
+        "Scheduler assigned %d of %d tasks for job %s",
+        len(assignments),
+        len(tasks),
+        job.job_id,
+    )
 
     for task, worker in assignments:
+        logger.debug("Assigning task %s to worker %s", task.task_id, worker.uuid)
         await send_task(worker, task)
 
     return {

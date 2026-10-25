@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import time
 from datetime import datetime, timedelta
 
@@ -9,6 +10,7 @@ from .models.worker import WorkerStates
 from .registry import workers
 
 HEARTBEAT_TIMEOUT = 15
+logger = logging.getLogger("grid.monitoring")
 
 
 async def ping_workers():
@@ -32,7 +34,7 @@ async def ping_workers():
                 )
 
             except Exception as e:
-                print(f"Failed to ping worker {worker.uuid}: {e}")
+                logger.error("Failed to ping worker %s: %s", worker.uuid, e)
 
         await asyncio.sleep(5)
 
@@ -50,12 +52,12 @@ async def monitor_heartbeats():
 
             if now - worker.last_heartbeat > timedelta(seconds=HEARTBEAT_TIMEOUT):
 
-                print(f"Heartbeat timeout: {worker.uuid}")
+                logger.warning("Heartbeat timeout: %s", worker.uuid)
 
                 try:
                     await worker.websocket.close()
 
                 except Exception as e:
-                    print(f"Failed to close worker {worker.uuid}: {e}")
+                    logger.error("Failed to close worker %s: %s", worker.uuid, e)
 
         await asyncio.sleep(1)

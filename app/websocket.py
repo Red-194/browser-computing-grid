@@ -1,4 +1,5 @@
 import math
+import logging
 import time
 from datetime import datetime
 
@@ -10,6 +11,7 @@ from .models.worker import Worker, WorkerMetadata, WorkerStates
 from .registry import workers, aggregators, task_counts, completed_jobs, job_start_times
 
 router = APIRouter()
+logger = logging.getLogger("grid.websocket")
 
 async def send_task(worker, task):
     if worker.websocket is None:
@@ -24,9 +26,11 @@ async def send_task(worker, task):
         return True
 
     except Exception as e:
-        print(
-            f"Failed to send task {task.task_id} "
-            f"to worker {worker.uuid}: {e}"
+        logger.error(
+            "Failed to send task %s to worker %s: %s",
+            task.task_id,
+            worker.uuid,
+            e,
         )
 
         return False
@@ -35,7 +39,7 @@ async def send_task(worker, task):
 async def websocket_endpoint(websocket: WebSocket):
 
     await websocket.accept()
-    print("Worker connected.")
+    logger.info("Worker connected")
     worker_uuid = None
 
     try:
@@ -81,8 +85,8 @@ async def websocket_endpoint(websocket: WebSocket):
                 
                 worker_uuid = worker.uuid
 
-                print(f"Registered worker: {worker.uuid}")
-                print(f"Worker metadata: {worker.metadata}")
+                logger.info("Registered worker: %s", worker.uuid)
+                logger.debug("Worker metadata for %s: %s", worker.uuid, worker.metadata)
 
                 await notify_dashboards()
 
@@ -103,9 +107,10 @@ async def websocket_endpoint(websocket: WebSocket):
                     continue
 
                 worker.last_heartbeat = datetime.now()
-                print(
-                    f"Heartbeat received from {worker.uuid} "
-                    f"at {worker.last_heartbeat}"
+                logger.debug(
+                    "Heartbeat received from %s at %s",
+                    worker.uuid,
+                    worker.last_heartbeat,
                 )
 
             elif msg_type == "pong":
@@ -119,10 +124,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 latency = (time.perf_counter() - message.timestamp) * 1000
                 worker.latency = math.ceil(latency)
 
-                print(
-                    f"Latency {worker.uuid}: "
-                    f"{worker.latency} ms"
-                )
+                logger.debug("Latency %s: %s ms", worker.uuid, worker.latency)
 
                 await notify_dashboards()
 
@@ -134,7 +136,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 aggregator = aggregators.get(str(job_id))
 
                 if aggregator is None:
-                    print(f"No aggregator found for job {job_id}")
+                    logger.error("No aggregator found for job %s", job_id)
                     continue
 
                 result = raw["result"]
@@ -146,14 +148,23 @@ async def websocket_endpoint(websocket: WebSocket):
                         "_task_id": task_id,
                         "_execution_time_ms": raw.get("execution_time_ms"),
                     }
-                aggregator.add_result(result)
+                try:
+                    aggregator.add_result(result)
+                except Exception:
+                    logger.error(
+                        "Failed to aggregate result for job %s task %s",
+                        job_id,
+                        task_id,
+                        exc_info=True,
+                    )
+                    raise
                 total_tasks = task_counts.get(str(job_id))
 
-                print(
-                    f"Task result received: "
-                    f"job={job_id} "
-                    f"task={task_id} "
-                    f"execution_time={raw['execution_time_ms']} ms"
+                logger.debug(
+                    "Task result received: job=%s task=%s execution_time=%s ms",
+                    job_id,
+                    task_id,
+                    raw["execution_time_ms"],
                 )
 
                 if aggregator.is_complete(total_tasks):
@@ -163,8 +174,8 @@ async def websocket_endpoint(websocket: WebSocket):
                         - job_start_times[str(job_id)]
                     )
                     completed_jobs.add(str(job_id))
-                    print(f"Job {job_id} aggregation complete.")
-                    print(f"Total execution time: {elapsed:.3f} seconds")
+                    logger.info("Job %s aggregation complete", job_id)
+                    logger.info("Job %s total execution time: %.3f seconds", job_id, elapsed)
 
 
 
@@ -179,8 +190,11 @@ async def websocket_endpoint(websocket: WebSocket):
                 worker.latency = 0
                 worker.state = WorkerStates.OFFLINE
 
-                print(f"Worker disconnected: {worker.uuid}")
+                logger.info("Worker disconnected: %s", worker.uuid)
                 await notify_dashboards()
 
         else:
-            print("Unknown worker disconnected.")
+            logger.warning("Unknown worker disconnected")
+    except Exception:
+        logger.error("WebSocket failure for worker %s", worker_uuid, exc_info=True)
+        raise

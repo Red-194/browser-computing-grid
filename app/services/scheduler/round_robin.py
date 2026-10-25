@@ -1,4 +1,7 @@
 from ...models.worker import WorkerStates
+import logging
+
+logger = logging.getLogger("grid.scheduler")
 
 
 class RoundRobinScheduler:
@@ -15,6 +18,7 @@ class RoundRobinScheduler:
         ]
 
         if not available_workers:
+            logger.debug("Round-robin scheduler found no idle workers for %d tasks", len(tasks))
             return []
 
         assignments = []
@@ -28,4 +32,9 @@ class RoundRobinScheduler:
             assignments.append((task, worker))
             self.index += 1
 
+        logger.debug(
+            "Round-robin scheduler assigned %d tasks across %d workers",
+            len(assignments),
+            len(available_workers),
+        )
         return assignments

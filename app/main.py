@@ -5,10 +5,13 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
 from .events import router as events_router
+from .logging_config import configure_logging
 from .monitoring import ping_workers, monitor_heartbeats
 from .routes import router
 from .websocket import router as websocket_router
 from .jobs import router as jobs_router
+
+configure_logging()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):

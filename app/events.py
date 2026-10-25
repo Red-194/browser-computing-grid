@@ -1,5 +1,6 @@
 import asyncio
 import json
+import logging
 
 from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
@@ -9,6 +10,7 @@ from .registry import workers
 router = APIRouter()
 
 subscribers: list[asyncio.Queue] = []
+logger = logging.getLogger("grid.events")
 
 
 async def notify_dashboards():
@@ -28,6 +30,7 @@ async def notify_dashboards():
 
     for queue in subscribers:
         await queue.put(payload)
+    logger.debug("Dashboard state update sent to %d subscribers", len(subscribers))
 
 
 @router.get("/events")

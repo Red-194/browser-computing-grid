@@ -8,12 +8,18 @@ Start the server and open at least one /worker tab first.
 """
 import argparse
 import json
+import logging
 import sys
 import time
 import urllib.error
 import urllib.request
 import uuid
 from pathlib import Path
+
+from app.logging_config import configure_logging
+
+configure_logging()
+logger = logging.getLogger("grid.cli.compress_file")
 
 parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
 parser.add_argument("file")
@@ -46,7 +52,12 @@ except urllib.error.HTTPError as error:
     sys.exit(f"upload rejected ({error.code}): {error.read().decode()}")
 
 job_id = job["job"]["job_id"]
-print(f"job {job_id}: {job['task_count']} tasks, {len(job['assignments'])} sent to workers")
+logger.info(
+    "Job %s: %d tasks, %d sent to workers",
+    job_id,
+    job["task_count"],
+    len(job["assignments"]),
+)
 if not job["assignments"]:
     sys.exit("No worker is connected. Open /worker in a browser tab, then try again.")
 
@@ -55,8 +66,8 @@ while time.time() - start < 600:
     with urllib.request.urlopen(f"{args.server}/jobs/{job_id}/result") as response:
         result = json.load(response)
     if "message" not in result:
-        print(f"done in {time.time() - start:.1f}s")
-        print(json.dumps(result, indent=2))
+        logger.info("Job %s completed in %.1f seconds", job_id, time.time() - start)
+        logger.info("Result: %s", json.dumps(result, indent=2))
         sys.exit(0)
     time.sleep(1)
 sys.exit("timed out waiting for the result")

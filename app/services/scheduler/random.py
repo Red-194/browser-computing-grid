@@ -1,5 +1,8 @@
 from ...models.worker import WorkerStates
+import logging
 import random
+
+logger = logging.getLogger("grid.scheduler")
 
 
 class RandomScheduler:
@@ -13,6 +16,7 @@ class RandomScheduler:
         ]
 
         if not available_workers:
+            logger.debug("Random scheduler found no idle workers for %d tasks", len(tasks))
             return []
 
         assignments = []
@@ -21,4 +25,9 @@ class RandomScheduler:
             worker = random.choice(available_workers)
             assignments.append((task, worker))
 
+        logger.debug(
+            "Random scheduler assigned %d tasks across %d workers",
+            len(assignments),
+            len(available_workers),
+        )
         return assignments
