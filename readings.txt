@@ -23,3 +23,6 @@ Laptop + Phone + RPi 5:  41.658 s
 
 3-worker speedup:        2.44×
 3-worker efficiency:     81.3%
+
+
+claude --resume 355a78f1-0e00-4533-8236-523e73cd9ed8
