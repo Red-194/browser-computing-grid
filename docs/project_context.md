@@ -31,9 +31,10 @@ Sprint-based. Done:
 - Execution in the WASM runtime and aggregation of results.
 - Six workloads end to end (Mandelbrot, SAT, `sat_batch`, compression, regex, N-Queens).
 - Compression with real file upload (`POST /jobs/compression/upload`, `scripts/compress_file.py`).
-- **Control blocks (PCBs)** in `app/models/pcb.py`, with tests in `tests/test_pcb.py` (see section 5). These are built and tested on their own; connecting them to the controller is the current step.
+- **Control blocks (PCBs)** in `app/models/pcb.py`, with tests in `tests/test_pcb.py` (see section 5).
+- **PCBs connected to the controller** (teammate's commit `a567e86`, "failure recovery somehow works"): pull-style dispatch by free slots, attempt numbers sent to workers and returned, requeue on disconnect and heartbeat timeout. Reviewed and corrected on 2026-10-26 (see "Review of the controller integration" in section 5). **Not yet verified live** with real worker tabs.
 
-Next (Decided): connect the PCBs to the controller, then recovery from a killed worker, then a speed-aware scheduler. The owner wants to keep discussing the design first; no controller code has been written (see the integration plan in section 5).
+Next (Decided): live test of recovery from a killed worker (two real worker tabs, close one mid-job), then the timeout checker, then a speed-aware scheduler.
 
 ## 4. What the current scheduler placeholder cannot do
 
@@ -54,7 +55,7 @@ Next (Decided): connect the PCBs to the controller, then recovery from a killed 
 - Cheap result checks (well-formed results, reject error results) will be added where cheap; random re-run sampling can wait.
 - Both the recovery from a killed worker and the speed-aware scheduler are required for the demo.
 
-### Implemented (PCB module, not yet connected)
+### Implemented (PCB module, now connected to the controller)
 
 - `TaskPCB`: states waiting, running, done, failed. `assign()` starts a numbered attempt. `complete(attempt, worker_uuid, digest)` returns accepted or stale (never an error). `requeue(reason, attempt=...)` is safe to call twice for the same loss. Default retry limit is 3. `is_timed_out()`, `disagreements()`.
 - `WorkerPCB`: states idle, busy, offline. Holds up to `capacity` tasks (default 2, `DEFAULT_WORKER_CAPACITY`). `mark_offline()` returns every `(task, attempt)` it held. `release()` returns false if the worker did not hold the task (not an error).
@@ -111,7 +112,7 @@ The digest (fingerprint of an answer) is separate from the worker's uuid. The uu
 1. A late result after reassignment (handled by attempt numbers and the stale outcome).
 2. Two events for the same loss, such as the disconnect handler and the timeout checker (handled by `requeue(attempt=...)` returning nothing the second time).
 3. Claim before send: an `await` during the send could let another event pick the same task or worker.
-4. **Possible bug in existing code, not verified:** in `app/websocket.py`, when a tab reloads, the old socket's close event can run after the new socket registers and mark the live worker Offline, because it looks the worker up by uuid. This might be connected to the hang seen in testing.
+4. **Reload race (fixed 2026-10-26, found by reading the code; a live reproduction was attempted and the test hung, so the fix is covered by unit tests only):** when a tab reloads, the old socket's close event can arrive after the new socket registers. The disconnect handler used to look the worker up by uuid, so it marked the live worker offline, requeued its tasks and set `worker.websocket = None`, dropping the new connection. `handle_socket_closed` in `app/websocket.py` now acts only if the closing socket is the worker's current socket.
 5. For several controllers (future): double claim, stale controller, split brain. These need compare-and-set on a record version, leases, and one owner per record.
 
 ### The control blocks in a decentralized setting (discussed, not built)
@@ -122,7 +123,9 @@ The digest (fingerprint of an answer) is separate from the worker's uuid. The uu
 - Worker data splits in two: connection state (online, busy) belongs to the controller the worker is connected to; speed history is what other controllers would want to share.
 - Decision for now (Decided): do not build any of this. The 10-device demo uses one controller. The record format keeps the option open.
 
-### Integration plan (not started: the project owner wants to discuss before any controller code)
+### Integration plan (done by the teammate in `a567e86`; kept here for the reasoning)
+
+Status 2026-10-26: steps 1 to 4 below are implemented in `app/jobs.py` and `app/websocket.py`. The shadow-mode idea in the last paragraph was not used.
 
 1. When a job is submitted, create its records and put its tasks in a waiting list.
 2. Dispatch pull-style: a task goes to a worker with a free slot; claim (mark running) first, then send, and undo if the send fails.
@@ -134,6 +137,25 @@ A possible safe first step is a "shadow mode": the records observe what the cont
 Checks to run after each step: `pytest tests/`, `python scripts/test_all_workloads.py` with at least one worker tab, and a real test with two devices.
 
 Still to build after the wiring: the digest function and per-workload result validation, per-worker per-workload speed tracking, the speed-aware picking rule, and the timeout checker.
+
+### Review of the controller integration (2026-10-26)
+
+What the teammate's commits `a567e86` and `d2cb275` built: `submit_job` creates a `JobPCB` and calls `dispatch_pending()`, which hands out only as many tasks as each worker has free slots and runs again after every result and every worker failure. `send_task` includes the attempt number and `worker.js` returns it with the result. A disconnect or heartbeat timeout calls `handle_worker_failure`, which requeues exactly the lost attempts. The random and round-robin schedulers respect free slots. Logging is configurable (`app/logging_config.py`). `tests/test_execution_pcb.py` has two tests.
+
+**Fixed on 2026-10-26** (uncommitted when this was written):
+
+- **Reload race** (see race condition 4 above), plus two things the fix needed: a worker that registers again has the tasks of its old session requeued (`attach_worker_pcb`), and `dispatch_pending()` runs after a worker registers, because nothing used to hand out waiting tasks when a worker joined or came back (a job with a single reloaded worker would have stayed idle).
+- **Failed jobs looked like hung jobs.** `GET /jobs/{id}/result` returned "Job is still processing." for any status other than done. It now returns `{"message": "Job failed.", "status": "failed", "failed_tasks": [...]}` (up to 10 tasks with retries and last error). `scripts/submit_job.py`, `scripts/test_all_workloads.py` and `app/static/js/jobs.js` only look for the old messages, so on a failed job they keep polling until their own timeout and do not show the new message.
+- **Small cleanups:** removed a dead `TypeError` fallback in `dispatch_pending` that re-sent a task without the attempt number (it could also hide a real `TypeError` and send a task twice); removed the duplicated `_task_id` and execution-time wrapping in `app/websocket.py` (`handle_task_result` does it); default log level is now INFO instead of DEBUG (heartbeat and ping notes are DEBUG, so they no longer flood the log); `GET /jobs/{id}` now returns the job's workload, status and progress (or "Job not found."); removed two unused imports in `app/monitoring.py`.
+- **New tests:** `tests/test_reconnect_and_failed_job.py` and `tests/test_dispatch_edge_cases.py` cover a late socket close, re-registering, first registration, failed-job replies, a late answer from a replaced attempt, an answer with no attempt number, an answer for an unknown job, failed sends (retried until the job fails, and a send that works on the second try), the same worker loss reported twice, and the job status reply. A test fake in `tests/test_new_workloads.py` now accepts the `attempt` argument like the real `send_task`.
+
+**Still open:**
+
+- **Worker capacity equals the core count** (`WorkerPCB(capacity=cores)`, with an odd fallback `getattr(worker, "cores", len(job_pcb.tasks))`). Each 8-core device gets 8 slots, not the default of 2 chosen for the PCB module, so a slow device can hold 8 tasks while a fast one idles at the end of a job. The project owner has not decided this.
+- **No timeout checker.** A worker that stays connected but is stuck holds its tasks forever. `TaskPCB.is_timed_out()` exists but nothing calls it. Recovery only happens on disconnect or heartbeat timeout.
+- **The submit freeze is unchanged.** `submit_job` runs the splitter to completion first (`tasks = get_splitter(...).split(job)`), and only then calls `dispatch_pending`, which sends at most the free slots' worth of tasks before replying. So a huge job still blocks the server while the list is built. Sending only a few tasks first just makes the reply smaller, not the splitting faster. **Decision 2026-10-26 (project owner): splitting is not a real overhead for our use cases, so no lazy splitting, no background splitting thread and no immediate-reply redesign are planned** (see the measurements and decision under section 10).
+- **Test gaps:** no test yet for a heartbeat timeout through the monitor loop, or for the real WebSocket endpoint (an attempt to drive it with the test client hung).
+- **The live test is not done:** start the server, open worker tabs on this PC and on a second device, submit a job with enough tasks, close the second device's tab part way, and check the job still finishes with the right result and that the lost tasks show a retry; then reload a tab, and repeat with a single worker.
 
 ### Candidate scheduler ideas (Proposed, none confirmed new)
 
@@ -216,7 +238,17 @@ Not scheduled. Nothing here has been built.
 - Scan mode counts zero-length matches differently from Python and JavaScript: `a*` on `baaac` gives 3 in the grid and 4 in Python. The Rust `fancy-regex` engine skips an empty match right after a non-empty one. Options: document it, or change the kernel to match Python.
 - If a WASM kernel ever throws, `app/static/js/worker.js` only logs the error to the browser console and never reports it to the controller, so the job would hang with no error message. Not triggered by valid input so far. Worth fixing as part of the reliability work.
 
-### Server freezes when a large job is submitted (found 2026-10-25, not fixed)
+### Splitting overhead: decision (2026-10-26)
+
+The splitter is fast for realistic jobs. Measured: N-Queens n=20 `split_depth=3` makes 4,964 tasks in 0.076 s (the project owner's own run, from the new DEBUG log lines); depth 4 makes 61,760 tasks in 0.09 s; depth 5 makes 654,548 tasks in 1.2 s; only multi-million-task jobs are slow (n=16 depth 7 is about 4,000,000 tasks in 27 s). The compression workload is the one exception: its cost is generating and encoding the data, not the task count (about 2.3 s for 32 MB).
+
+**Decided:** do not build lazy splitting (the scheduler pulling tasks from a generator), a background splitting thread, or an immediate-reply submit. They would only matter for oversized jobs, which are settings mistakes, or for large compression uploads. Lazy splitting stays on the list as an optional optimization (it would also cut the controller overhead seen in the compression benchmark and cut memory, since every task payload is kept until the job ends) to revisit only if big-file compression becomes part of the demo.
+
+**Not decided:** a cap on the number of tasks a job may create, as a small safety net against a bad `split_depth` freezing the server (proposed limit 100,000; one check, no effect on normal jobs). TCP and threads were discussed: a thread keeps the server responsive but does not reduce memory or time, and the cap is what prevents an out-of-memory crash.
+
+New DEBUG log lines in `submit_job` record when the splitter starts and how long it took ("splitter finished: N tasks in X s").
+
+### Server freezes when a large job is submitted (found 2026-10-25, not fixed; see the decision above and the review in section 5)
 
 A teammate submitted a request through the interactive API page (`/docs`, Swagger) and the server did not respond for a long time. Reproduced:
 

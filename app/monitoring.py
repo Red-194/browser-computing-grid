@@ -3,10 +3,7 @@ import logging
 import time
 from datetime import datetime, timedelta
 
-from app.events import notify_dashboards
-
 from .models.protocol import PingMessage
-from .models.worker import WorkerStates
 from .registry import workers
 
 HEARTBEAT_TIMEOUT = 15

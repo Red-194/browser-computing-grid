@@ -345,7 +345,7 @@ def test_compression_upload_endpoint_sends_exact_file_bytes():
 
     sent = []
 
-    async def fake_send(worker, task):
+    async def fake_send(worker, task, attempt=None):
         sent.append(task)
 
     from app.models.worker import WorkerStates

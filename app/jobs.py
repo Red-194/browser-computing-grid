@@ -85,7 +85,15 @@ async def submit_job(job: JobSubmission):
     job_id = uuid4()
     job.job_id = job_id
     job_start_times[str(job_id)] = time.perf_counter()
+    logger.debug("Job %s splitter started (%s)", job_id, job.workload)
+    split_started = time.perf_counter()
     tasks = get_splitter(job.workload).split(job)
+    logger.debug(
+        "Job %s splitter finished: %d tasks in %.3f s",
+        job_id,
+        len(tasks),
+        time.perf_counter() - split_started,
+    )
     job_pcbs[str(job_id)] = JobPCB.create(
         job_id, job.workload, [task.task_id for task in tasks]
     )
@@ -132,12 +140,7 @@ async def dispatch_pending(job_id: UUID | None = None) -> list[dict]:
             worker_pcb.assign(task_pcb.key, attempt)
             sync_worker_state(worker.uuid)
             task = job_tasks[str(job_pcb.job_id)][task_pcb.task_id]
-            try:
-                sent = await send_task(worker, task, attempt=attempt)
-            except TypeError as error:
-                if "unexpected keyword argument 'attempt'" not in str(error):
-                    raise
-                sent = await send_task(worker, task)
+            sent = await send_task(worker, task, attempt=attempt)
             if sent is not False:
                 dispatched.append(
                     {"task_id": task.task_id, "worker": worker.uuid, "attempt": attempt}
@@ -206,7 +209,16 @@ async def list_jobs():
 
 @router.get("/{job_id}")
 async def get(job_id: UUID):
-    return {"message": "Get job.", "job_id": job_id}
+    job_pcb = job_pcbs.get(str(job_id))
+    if job_pcb is None:
+        return {"message": "Job not found.", "job_id": job_id}
+    return {
+        "message": "Get job.",
+        "job_id": job_id,
+        "workload": job_pcb.workload,
+        "status": job_pcb.status.value,
+        "progress": job_pcb.progress(),
+    }
 
 
 @router.get("/{job_id}/result")
@@ -214,7 +226,22 @@ async def result(job_id: UUID):
     job_id_str = str(job_id)
     if job_id_str not in aggregators:
         return {"message": "Job not found.", "job_id": job_id}
-    if job_pcbs[job_id_str].status != JobStatus.DONE:
+    job_pcb = job_pcbs[job_id_str]
+    if job_pcb.status == JobStatus.FAILED:
+        return {
+            "message": "Job failed.",
+            "job_id": job_id,
+            "status": JobStatus.FAILED.value,
+            "failed_tasks": [
+                {
+                    "task_id": task.task_id,
+                    "retries": task.retries,
+                    "error": task.last_error,
+                }
+                for task in job_pcb.failed_tasks()[:10]  # keep the reply small
+            ],
+        }
+    if job_pcb.status != JobStatus.DONE:
         return {"message": "Job is still processing.", "job_id": job_id}
     return Response(
         content=aggregators[job_id_str].get_result(),

@@ -40,6 +40,56 @@ async def send_task(worker, task, attempt: int | None = None):
 
         return False
 
+async def attach_worker_pcb(worker):
+    """Create or revive the worker's control block when it registers.
+
+    If the worker already had one with tasks on it, those tasks belonged to its
+    old session (the tab reloaded or reconnected) and are gone, so they are
+    requeued before the worker is marked online again.
+    """
+    from .jobs import handle_worker_failure, sync_worker_state
+
+    worker_pcb = worker_pcbs.get(worker.uuid)
+    if worker_pcb is None:
+        worker_pcb = WorkerPCB(worker.uuid, capacity=max(1, worker.cores))
+        worker_pcbs[worker.uuid] = worker_pcb
+    else:
+        if worker_pcb.running:
+            await handle_worker_failure(worker.uuid, "worker re-registered")
+        worker_pcb.mark_online()
+    worker_pcb.touch()
+    sync_worker_state(worker.uuid)
+    return worker_pcb
+
+
+async def handle_socket_closed(worker_uuid, websocket):
+    """A worker's socket closed. Only act if it is the worker's current socket.
+
+    When a tab reloads, the new socket registers first and the old socket's
+    close can arrive afterwards. That late close must not mark the live worker
+    offline or drop its new connection.
+    """
+    worker = workers.get(worker_uuid)
+    if worker is None:
+        return False
+
+    if worker.websocket is not websocket:
+        logger.info(
+            "Ignoring close of an old socket for worker %s (it has reconnected)",
+            worker.uuid,
+        )
+        return False
+
+    from .jobs import handle_worker_failure
+    await handle_worker_failure(worker.uuid, "worker disconnected")
+    worker.websocket = None
+    worker.latency = 0
+
+    logger.info("Worker disconnected: %s", worker.uuid)
+    await notify_dashboards()
+    return True
+
+
 @router.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
 
@@ -88,16 +138,8 @@ async def websocket_endpoint(websocket: WebSocket):
 
                     workers[worker.uuid] = worker
 
-                worker_pcb = worker_pcbs.get(worker.uuid)
-                if worker_pcb is None:
-                    worker_pcb = WorkerPCB(worker.uuid, capacity=max(1, worker.cores))
-                    worker_pcbs[worker.uuid] = worker_pcb
-                else:
-                    worker_pcb.mark_online()
-                worker_pcb.touch()
-                from .jobs import sync_worker_state
-                sync_worker_state(worker.uuid)
-                
+                worker_pcb = await attach_worker_pcb(worker)
+
                 worker_uuid = worker.uuid
 
                 logger.info("Registered worker: %s", worker.uuid)
@@ -112,6 +154,10 @@ async def websocket_endpoint(websocket: WebSocket):
                 )
 
                 await websocket.send_json(ack.model_dump())
+
+                # A worker that just joined (or came back) can take waiting tasks.
+                from .jobs import dispatch_pending
+                await dispatch_pending()
 
             elif msg_type == "heartbeat":
 
@@ -151,14 +197,6 @@ async def websocket_endpoint(websocket: WebSocket):
                 task_id = raw["task_id"]
 
                 result = raw["result"]
-                # Aggregators that need idempotence (such as SAT) can use the
-                # task id without changing the worker-to-controller protocol.
-                if isinstance(result, dict):
-                    result = {
-                        **result,
-                        "_task_id": task_id,
-                        "_execution_time_ms": raw.get("execution_time_ms"),
-                    }
                 logger.debug(
                     "Task result received: job=%s task=%s execution_time=%s ms",
                     job_id,
@@ -181,17 +219,7 @@ async def websocket_endpoint(websocket: WebSocket):
     except WebSocketDisconnect:
 
         if worker_uuid is not None:
-
-            worker = workers.get(worker_uuid)
-
-            if worker is not None:
-                from .jobs import handle_worker_failure
-                await handle_worker_failure(worker.uuid, "worker disconnected")
-                worker.websocket = None
-                worker.latency = 0
-
-                logger.info("Worker disconnected: %s", worker.uuid)
-                await notify_dashboards()
+            await handle_socket_closed(worker_uuid, websocket)
 
         else:
             logger.warning("Unknown worker disconnected")
