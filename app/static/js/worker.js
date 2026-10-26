@@ -10,6 +10,11 @@ const workerUUID = getWorkerUUID();
 let heartbeatTimer = null;
 let socket = null;
 
+// How many tasks this worker is running right now.
+// More than 0 = Busy, 0 = Idle.
+let runningTasks = 0;
+let idleTimer = null;
+
 const computeWorker = new Worker(
     "/static/js/compute-worker.js",
     { type: "module" }
@@ -56,6 +61,8 @@ computeWorker.onmessage = (event) => {
 
         }
 
+        taskFinished();
+
         return;
     }
 
@@ -65,6 +72,8 @@ computeWorker.onmessage = (event) => {
             `Task ${message.task_id} failed:`,
             message.error
         );
+
+        taskFinished();
 
         return;
     }
@@ -93,8 +102,7 @@ function connect() {
 
     socket.onopen = () => {
 
-        document.getElementById("state").textContent =
-            "Registering...";
+        setState("Registering...", false);
 
         socket.send(JSON.stringify({
 
@@ -116,8 +124,9 @@ function connect() {
 
         if (message.type === "register_ack") {
 
-            document.getElementById("state").textContent =
-                `Connected • ${message.state}`;
+            runningTasks = 0;
+
+            setState(`Connected • ${message.state}`, false);
 
             clearInterval(heartbeatTimer);
 
@@ -141,6 +150,8 @@ function connect() {
                 message.task
             );
 
+            taskStarted();
+
             /*
              * Do NOT execute WASM here.
              *
@@ -162,8 +173,11 @@ function connect() {
 
         clearInterval(heartbeatTimer);
 
-        document.getElementById("state").textContent =
-            "Disconnected";
+        clearTimeout(idleTimer);
+
+        runningTasks = 0;
+
+        setState("Disconnected", true);
 
         setTimeout(() => {
             connect();
@@ -174,10 +188,75 @@ function connect() {
 
     socket.onerror = () => {
 
-        document.getElementById("state").textContent =
-            "Connection Error";
+        setState("Connection Error", true);
 
     };
+
+}
+
+
+/*
+ * Show the worker state.
+ * isError = true -> red badge, false -> green badge.
+ */
+
+function setState(text, isError) {
+
+    const state = document.getElementById("state");
+
+    state.textContent = text;
+
+    state.parentElement.classList.toggle("disconnected", isError);
+
+    // Yellow badge while busy
+    state.parentElement.classList.toggle(
+        "busy",
+        !isError && text.includes("Busy")
+    );
+
+}
+
+
+/*
+ * Busy / Idle
+ *
+ * The page counts its own tasks:
+ *   task arrives  -> Busy
+ *   all tasks done -> Idle (after a short pause, so a very
+ *                     fast task is still visible as Busy)
+ */
+
+function taskStarted() {
+
+    runningTasks++;
+
+    clearTimeout(idleTimer);
+
+    setState("Connected • Busy", false);
+
+}
+
+
+function taskFinished() {
+
+    runningTasks = Math.max(0, runningTasks - 1);
+
+    if (runningTasks > 0) {
+        return;
+    }
+
+    clearTimeout(idleTimer);
+
+    idleTimer = setTimeout(() => {
+
+        if (
+            runningTasks === 0 &&
+            socket?.readyState === WebSocket.OPEN
+        ) {
+            setState("Connected • Idle", false);
+        }
+
+    }, 1000);
 
 }
 

@@ -104,9 +104,11 @@ function updateDashboard(workers) {
 
 
     // Average latency
+    // Only count workers that have a real measured latency
+    // (offline workers and not-yet-measured workers have 0).
     const latencies = workers
         .map(worker => Number(worker.latency))
-        .filter(latency => !isNaN(latency));
+        .filter(latency => !isNaN(latency) && latency > 0);
 
 
     if (
@@ -148,7 +150,12 @@ function updateDashboard(workers) {
     }
 
 
-    renderWorkerCards(workers);
+    // OLD VIEW (one card per worker with all details).
+    // To use it again: uncomment the line below, uncomment
+    // renderWorkerCards() further down, and comment renderWorkerTree().
+    // renderWorkerCards(workers);
+
+    renderWorkerTree(workers);
 
     renderWorkerTable(workers);
 
@@ -156,9 +163,216 @@ function updateDashboard(workers) {
 
 
 // ==========================================
-// WORKER CARDS
+// SMALL HELPERS
 // ==========================================
 
+// Latency text. 0 means "not measured yet" or "offline".
+function formatLatency(worker) {
+
+    const latency = Number(worker.latency);
+
+    if (worker.state === "Offline" || !latency) {
+        return "--";
+    }
+
+    return latency + " ms";
+
+}
+
+
+// Memory text. Some browsers (Firefox, Safari) do not share
+// device memory, so the worker sends 0.
+function formatMemory(worker) {
+
+    if (!worker.memory) {
+        return "--";
+    }
+
+    return worker.memory + " GB";
+
+}
+
+
+// Cores text.
+function formatCores(worker) {
+
+    if (!worker.cores) {
+        return "--";
+    }
+
+    return worker.cores + " cores";
+
+}
+
+
+// ==========================================
+// WORKER TREE (NEW VIEW)
+// ==========================================
+//
+// Controller is the root. Workers are split into
+// a few branches (columns). Each branch is a vertical
+// line with workers hanging off it like leaves:
+//
+//              [ Controller ]
+//                    |
+//       +------------+------------+
+//       |            |            |
+//       +- Worker 1  +- Worker 2  +- Worker 3
+//       +- Worker 4  +- Worker 5  +- Worker 6
+//
+// Each box only shows "Worker N". Click a box to see
+// its details in a popup. The lines are drawn by
+// drawWorkerTree() in dashboard.html.
+
+// Width given to one branch column (px).
+const BRANCH_WIDTH = 170;
+
+// Number of branches used in the last render.
+let lastBranchCount = 0;
+
+
+function getBranchCount(workerCount) {
+
+    const width =
+        workersContainer.clientWidth || 800;
+
+    const fit =
+        Math.max(1, Math.floor(width / BRANCH_WIDTH));
+
+    return Math.min(fit, workerCount);
+
+}
+
+
+function renderWorkerTree(workers) {
+
+    if (!workersContainer) {
+        return;
+    }
+
+
+    // No workers
+    if (workers.length === 0) {
+
+        workersContainer.className =
+            "workers-container";
+
+        workersContainer.innerHTML = `
+
+            <div class="empty-state">
+
+                <div>◌</div>
+
+                <h3>
+                    No workers connected
+                </h3>
+
+                <p>
+                    Waiting for browser workers to connect...
+                </p>
+
+            </div>
+
+        `;
+
+        lastBranchCount = 0;
+
+        return;
+    }
+
+
+    const branchCount =
+        getBranchCount(workers.length);
+
+    lastBranchCount = branchCount;
+
+
+    workersContainer.className =
+        "workers-container worker-tree";
+
+    workersContainer.innerHTML = "";
+
+
+    // Make the empty branches
+    const branches = [];
+
+    for (let i = 0; i < branchCount; i++) {
+
+        const branch =
+            document.createElement("div");
+
+        branch.className = "worker-branch";
+
+        workersContainer.appendChild(branch);
+
+        branches.push(branch);
+
+    }
+
+
+    // Put the workers into branches one by one
+    // (Worker 1 -> branch 1, Worker 2 -> branch 2, ...)
+    workers.forEach((worker, index) => {
+
+        const state =
+            worker.state || "Offline";
+
+        const leaf =
+            document.createElement("div");
+
+        leaf.className =
+            "worker-leaf " + state.toLowerCase();
+
+        leaf.title = state;
+
+        leaf.innerHTML = `
+            <span class="status-dot"></span>
+            Worker ${index + 1}
+        `;
+
+        leaf.addEventListener(
+            "click",
+            () => {
+
+                showWorkerDetails(worker, index + 1);
+
+            }
+        );
+
+        branches[index % branchCount].appendChild(leaf);
+
+    });
+
+}
+
+
+// Re-draw the tree when the window size changes
+// enough to fit a different number of branches.
+window.addEventListener(
+    "resize",
+    () => {
+
+        if (
+            currentWorkers.length > 0 &&
+            getBranchCount(currentWorkers.length) !== lastBranchCount
+        ) {
+
+            renderWorkerTree(currentWorkers);
+
+        }
+
+    }
+);
+
+
+// ==========================================
+// WORKER CARDS (OLD VIEW - COMMENTED OUT)
+// ==========================================
+//
+// To use the old card view again, remove the "/*" below
+// and the "*/" at the end of this function.
+
+/*
 function renderWorkerCards(workers) {
 
     if (!workersContainer) {
@@ -190,6 +404,10 @@ function renderWorkerCards(workers) {
         return;
     }
 
+
+    // Remove the tree style added by renderWorkerTree()
+    workersContainer.className =
+        "workers-container";
 
     workersContainer.innerHTML = "";
 
@@ -298,6 +516,8 @@ function renderWorkerCards(workers) {
     });
 
 }
+*/
+// ===== END OF OLD CARD VIEW =====
 
 
 // ==========================================
@@ -318,7 +538,7 @@ function renderWorkerTable(workers) {
             <tr>
 
                 <td
-                    colspan="7"
+                    colspan="6"
                     class="empty-table"
                 >
 
@@ -372,43 +592,52 @@ function renderWorkerTable(workers) {
 
 
             <td>
-                ${worker.cores ?? "--"} cores
+                ${formatCores(worker)}
             </td>
 
 
             <td>
-                ${worker.memory ?? "--"} GB
+                ${formatMemory(worker)}
             </td>
 
 
             <td>
-                ${worker.latency ?? "--"} ms
+                ${worker.ip || "--"}
             </td>
 
 
             <td>
-                ${worker.last_heartbeat ?? "--"}
-            </td>
-
-
-            <td>
-
-                <button
-                    class="worker-action-btn"
-                    onclick="disconnectWorker('${worker.uuid}')"
-                >
-
-                    ${
-                        state === "Offline"
-                            ? "Remove"
-                            : "Disconnect"
-                    }
-
-                </button>
-
+                ${formatLatency(worker)}
             </td>
 
         `;
+
+
+        // OLD COLUMNS (commented out)
+        //
+        // These were shown in the wrong columns: latency appeared
+        // under "IP Address" and heartbeat under "Latency".
+        // The backend does not send last_heartbeat, so it was
+        // always "--".
+        //
+        // <td>
+        //     ${worker.last_heartbeat ?? "--"}
+        // </td>
+        //
+        // DISCONNECT BUTTON (commented out)
+        // The worker page reconnects by itself after 3 seconds,
+        // so this button has no lasting effect. To use it again,
+        // add this cell back to row.innerHTML above, and add an
+        // "Action" <th> in dashboard.html:
+        //
+        // <td>
+        //     <button
+        //         class="worker-action-btn"
+        //         onclick="disconnectWorker('${worker.uuid}')"
+        //     >
+        //         ${state === "Offline" ? "Remove" : "Disconnect"}
+        //     </button>
+        // </td>
 
 
         workerTableBody.appendChild(row);
@@ -422,7 +651,8 @@ function renderWorkerTable(workers) {
 // WORKER DETAILS MODAL
 // ==========================================
 
-function showWorkerDetails(worker) {
+// number = the worker's number in the tree (Worker 1, Worker 2, ...)
+function showWorkerDetails(worker, number) {
 
     // Remove existing modal if one exists
     const oldModal =
@@ -562,7 +792,7 @@ function showWorkerDetails(worker) {
                             font-weight: bold;
                         ">
 
-                            Worker
+                            Worker ${number ?? ""}
 
                         </div>
 
@@ -638,7 +868,7 @@ function showWorkerDetails(worker) {
                             font-weight: bold;
                         ">
 
-                            ${worker.ip ?? "--"}
+                            ${worker.ip || "--"}
 
                         </div>
 
@@ -671,7 +901,7 @@ function showWorkerDetails(worker) {
                             font-weight: bold;
                         ">
 
-                            ${worker.cores ?? "--"} cores
+                            ${formatCores(worker)}
 
                         </div>
 
@@ -704,7 +934,7 @@ function showWorkerDetails(worker) {
                             font-weight: bold;
                         ">
 
-                            ${worker.memory ?? "--"} GB
+                            ${formatMemory(worker)}
 
                         </div>
 
@@ -737,7 +967,7 @@ function showWorkerDetails(worker) {
                             font-weight: bold;
                         ">
 
-                            ${worker.latency ?? "--"} ms
+                            ${formatLatency(worker)}
 
                         </div>
 
@@ -745,7 +975,8 @@ function showWorkerDetails(worker) {
 
 
 
-                    <!-- LAST HEARTBEAT -->
+                    <!-- LAST HEARTBEAT (commented out: the backend
+                         does not send it, so it was always "--")
 
                     <div style="
                         background: #1b2540;
@@ -776,6 +1007,8 @@ function showWorkerDetails(worker) {
                         </div>
 
                     </div>
+
+                    END OF LAST HEARTBEAT -->
 
 
                 </div>
@@ -808,6 +1041,9 @@ function showWorkerDetails(worker) {
                     </button>
 
 
+                    <!-- DISCONNECT BUTTON (commented out: the worker
+                         reconnects by itself, so it has no lasting effect)
+
                     <button
                         id="modalDisconnectButton"
                         style="
@@ -827,6 +1063,8 @@ function showWorkerDetails(worker) {
                         }
 
                     </button>
+
+                    END OF DISCONNECT BUTTON -->
 
 
                 </div>
@@ -863,23 +1101,24 @@ function showWorkerDetails(worker) {
 
 
     // ======================================
-    // DISCONNECT BUTTON
+    // DISCONNECT BUTTON (commented out)
+    // Uncomment together with the button above.
     // ======================================
 
-    document
-        .getElementById("modalDisconnectButton")
-        .addEventListener(
-            "click",
-            async () => {
-
-                await disconnectWorker(
-                    worker.uuid
-                );
-
-                modal.remove();
-
-            }
-        );
+    // document
+    //     .getElementById("modalDisconnectButton")
+    //     .addEventListener(
+    //         "click",
+    //         async () => {
+    //
+    //             await disconnectWorker(
+    //                 worker.uuid
+    //             );
+    //
+    //             modal.remove();
+    //
+    //         }
+    //     );
 
 
     // ======================================
