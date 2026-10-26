@@ -42,7 +42,7 @@ The `frontend-ui` branch (teammate's jobs page, dashboard worker view, Busy/Idle
 
 Measured result (see [results/scheduler_results.md](results/scheduler_results.md)): on Mandelbrot with a laptop tab and a phone, the adaptive algorithms take about 13 s against 28 s for `random` (2.2x, 18 runs against 5). No measured gain yet on N-Queens, and SAT has not been run live with the adaptive code.
 
-Next: decide the default algorithm (still `random`; `boinc` is the data-backed candidate for Mandelbrot only); run SAT (`sat_batch`) and repeat N-Queens n=17 under each algorithm with `scripts/bench_scheduler.py`; test with more than two devices; demo plan (drafted in conversation, not yet written up or approved).
+Next: decide the default algorithm (still `random`; `boinc` is the data-backed candidate for Mandelbrot only); run SAT (`sat_batch`) and repeat N-Queens n=17 under each algorithm with `scripts/bench_scheduler.py`; test with more than two devices; demo plan (section 12, drafted, not yet approved).
 
 ## 4. What the old scheduler placeholder could not do (kept for the reasoning; the adaptive scheduler in section 5 addresses these)
 
@@ -393,3 +393,33 @@ The server must be started from the project root, because `app/main.py` mounts `
 - To test across devices, start the controller with `--host 0.0.0.0` and open `http://<controller-ip>:8000/worker` (plain `http://`) on the other device. Windows Firewall may need an inbound rule for port 8000.
 - Tests: `pytest tests/` (Python), `cargo test` in `runtime/` (Rust), and `python scripts/test_all_workloads.py` for a live check that needs a server and at least one worker tab.
 - Preference: do not add a `Co-Authored-By` line to commit messages.
+
+## 12. Demo plan (Proposed, drafted 2026-10-26, not yet approved)
+
+Assumptions: a slot of about 10 minutes, a laptop plus a phone (optionally more lab devices) on the same Wi-Fi, an audience that knows what a distributed system is. Change these if they are wrong.
+
+**The story:** open a web page and your device becomes a compute node; the controller learns how fast each node is and gives the heavy work to the fast ones; if a node disappears the work is not lost.
+
+| # | Minutes | What we do | What the audience sees | What we say |
+|---|---|---|---|---|
+| 1 | 1 | Show the architecture diagram from the README | Client, controller, worker tab | Portable (no install), secure (WASM sandbox), reliable (recovery) |
+| 2 | 1.5 | Server running; open `/dashboard` on the laptop; the phone opens `http://<laptop-ip>:8000/worker` | The phone appears on the dashboard within seconds, with its threads and latency | "That is the whole install." |
+| 3 | 2 | Jobs page: submit the Mandelbrot job (whole set, 800x600, tile 50, 100,000 iterations, about 4 to 8 s) | Task table filling with worker ids, progress bar, the fractal image | The job is split into 192 tiles and the results are aggregated in the controller |
+| 4 | 3 | **Headline.** Run the same job under `random` and then `boinc` (`curl -X PUT .../scheduler -d '{"name":"random"}'`), then `curl .../scheduler/stats` | The time roughly halves (a smoke test gave 8.3 s against 4.1 s); the stats show the phone about 50x slower per unit | Random gives the phone half the heavy tiles; the BOINC-style scheduler measured both devices and gave the phone the near-empty ones |
+| 5 | 2 | **Failure.** Start a longer job (N-Queens n=17, `split_depth` 1, about 10 s) and click Disconnect on the dashboard, or `POST /disconnect/<uuid>`, partway through | The worker drops off the dashboard; the log shows `requeueing N running task(s)`; the job still finishes with the correct count (95,815,104 solutions) | Attempt numbers and requeueing: nothing is lost and the answer is checked |
+| 6 | 0.5 | Show `docs/results/scheduler_results.md` | 2.2x, spread, limits | Be explicit about the limits: two devices, one workload shows the gain |
+
+Optional, not to be relied on: `grep "Work stealing"` in the server log shows idle workers copying the last task. Its measured benefit is small, so present it as a tail-latency safety net and not a speedup.
+
+**Not demoed, and why:** the scheduler comparison on N-Queens or SAT (the data show a tie there, because task sizes cannot be known in advance); work stealing as a headline (not measurable in our runs); two browsers on one laptop as "two machines" (they share one CPU, so the gap shrinks).
+
+**Preparation**
+1. Add the demo job files to `examples/` (the whole-set Mandelbrot and the n=17 N-Queens job exist only in a scratch folder today).
+2. Write the commands and this run of show into a short `docs/demo.md`.
+3. Pre-flight, 30 minutes before: restart the browser used as a worker (Chrome still runs at lowered CPU priority from testing); check for stray CPU-load processes; start the server from the project root with `GRID_LOG_LEVEL=INFO GRID_SCHEDULER=random uvicorn app.main:app --host 0.0.0.0 --port 8000`; check the laptop's IP with `hostname -I` (venue Wi-Fi changes it); phone and laptop on the same network, phone set to stay awake with battery saver off (it dropped once when the screen locked); hard-reload every worker tab; run one untrained warm-up job.
+4. Dry run the whole demo once, timing each act, and confirm `random` is about 2x slower than `boinc` on the day's devices.
+5. Fallbacks: a recorded run (keep the CSV and results file open, plus a 30 s screen recording of the comparison); if the phone will not connect, use a second browser on the laptop and say the gap would be larger on real mixed hardware; if a live job hangs, disconnect the slow worker with `?reconnect=true`, or restart the server (workers reconnect by themselves).
+
+**Optional extras:** a `scripts/demo.sh` that runs acts 4 and 5 with one command each; a one-page slide with the headline table (28 s against 13 s, 18 runs against 5) and the limitations; testing the unverified paths first (the jobs page Failed display, SAT on `sat_batch`).
+
+**Risks:** Wi-Fi or phone sleep during the demo; the headline depends on a large speed gap between the devices, which must be confirmed on the day; the first job after a restart runs with an untrained scheduler and is slower (the learning run took about 18 s), so always warm up; the dashboard is localhost-only, so it must be shown on the laptop running the server.
