@@ -11,8 +11,11 @@ class RaytracingAggregator:
         "primary_rays",
         "total_rays",
         "sphere_tests",
+        "box_tests",
+        "plane_tests",
         "shadow_rays",
         "reflection_rays",
+        "refraction_rays",
         "light_samples",
     )
 
@@ -75,7 +78,8 @@ class RaytracingAggregator:
         }
         stats = self.task_stats[task_id]["work_stats"]
         stats["actual_work_units"] = (
-            stats["total_rays"] + stats["sphere_tests"] + stats["light_samples"]
+            stats["total_rays"] + stats["sphere_tests"] + stats["box_tests"]
+            + stats["plane_tests"] + stats["light_samples"]
         )
 
     def is_complete(self, total_tasks):
@@ -88,7 +92,8 @@ class RaytracingAggregator:
                 if name in totals:
                     totals[name] += value
         totals["actual_work_units"] = (
-            totals["total_rays"] + totals["sphere_tests"] + totals["light_samples"]
+            totals["total_rays"] + totals["sphere_tests"] + totals["box_tests"]
+            + totals["plane_tests"] + totals["light_samples"]
         )
         return {
             "completed_tiles": len(self.task_stats),

@@ -88,7 +88,7 @@ function startComputeWorker() {
 
     const entry = {
         worker: new Worker(
-            "/static/js/compute-worker.js?v=raytracing-20261027-3",
+            "/static/js/compute-worker.js?v=raytracing-20261027-4",
             { type: "module" }
         ),
         ready: false,

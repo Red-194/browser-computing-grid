@@ -2,7 +2,7 @@ use runtime::kernels::compression::{self, CompressionInput};
 use runtime::kernels::mandelbrot::{self, MandelbrotInput};
 use runtime::kernels::nqueens::{self, NQueensInput};
 use runtime::kernels::raytracing::{
-    self, RayCamera, RayLight, RayScene, RaySphere, RayTracingInput,
+    self, RayBox, RayCamera, RayLight, RayPlane, RayScene, RaySphere, RayTracingInput,
 };
 use runtime::kernels::regex_scan::{self, RegexInput};
 use runtime::kernels::sat::{self, SatInput};
@@ -85,6 +85,8 @@ fn ray_sphere(center: [f64; 3], radius: f64, color: [f64; 3], reflectivity: f64)
         radius,
         color,
         reflectivity,
+        transparency: 0.0,
+        refractive_index: 1.5,
     }
 }
 
@@ -115,6 +117,8 @@ fn ray_input(
                 vertical_fov_degrees: 20.0,
             },
             spheres,
+            boxes: vec![],
+            planes: vec![],
             lights,
             background,
         },
@@ -263,6 +267,41 @@ fn test_raytracing_spp_and_edge_tile_dimensions_are_reported() {
     assert_eq!(output.pixel_buffer.len(), 3);
     assert_eq!(output.work_stats.primary_rays, 3);
     assert_eq!(output.work_stats.total_rays, 3);
+}
+
+#[test]
+fn test_raytracing_box_and_plane_intersections_are_counted() {
+    let mut input = ray_input(
+        1, 1, 1, 0, 0, 1, 0, vec![], vec![white_light([0.0, 3.0, 4.0])], [0.0; 3],
+    );
+    input.scene.boxes.push(RayBox {
+        minimum: [-0.8, -0.8, 0.5], maximum: [0.8, 0.8, 1.0],
+        color: [0.8, 0.2, 0.1], reflectivity: 0.0,
+        transparency: 0.0, refractive_index: 1.5,
+    });
+    input.scene.planes.push(RayPlane {
+        point: [0.0, -1.0, 0.0], normal: [0.0, 1.0, 0.0],
+        color: [0.7; 3], reflectivity: 0.1,
+        transparency: 0.0, refractive_index: 1.5,
+    });
+    let output = raytracing::run(input);
+    assert!(output.work_stats.box_tests > 0);
+    assert!(output.work_stats.plane_tests > 0);
+    assert!(output.pixel_buffer.iter().any(|channel| *channel > 0));
+}
+
+#[test]
+fn test_raytracing_transparent_surface_emits_refraction_rays() {
+    let glass = RaySphere {
+        center: [0.0, 0.0, 0.0], radius: 1.0, color: [0.7, 0.9, 1.0],
+        reflectivity: 0.0, transparency: 0.95, refractive_index: 1.5,
+    };
+    let output = raytracing::run(ray_input(
+        1, 1, 1, 0, 0, 1, 3, vec![glass], vec![], [0.8, 0.2, 0.1],
+    ));
+    assert!(output.work_stats.refraction_rays > 0);
+    assert!(output.work_stats.reflection_rays > 0);
+    assert_ne!(output.pixel_buffer, vec![0; 3]);
 }
 
 #[test]

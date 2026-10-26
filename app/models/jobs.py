@@ -233,16 +233,45 @@ class RayCamera(BaseModel):
         return self
 
 
-class RaySphere(BaseModel):
-    center: RayVec3
-    radius: float = Field(gt=0.0)
+class RayMaterial(BaseModel):
     color: RayVec3
     reflectivity: float = Field(default=0.0, ge=0.0, le=1.0)
+    transparency: float = Field(default=0.0, ge=0.0, le=1.0)
+    refractive_index: float = Field(default=1.5, gt=1.0, le=3.0)
 
     @model_validator(mode="after")
-    def validate_color(self):
+    def validate_material(self):
         if any(channel < 0.0 or channel > 1.0 for channel in self.color):
-            raise ValueError("sphere color channels must be between 0 and 1")
+            raise ValueError("material color channels must be between 0 and 1")
+        if self.reflectivity + self.transparency > 1.0:
+            raise ValueError("reflectivity plus transparency cannot exceed 1")
+        return self
+
+
+class RaySphere(RayMaterial):
+    center: RayVec3
+    radius: float = Field(gt=0.0)
+
+
+class RayBox(RayMaterial):
+    minimum: RayVec3
+    maximum: RayVec3
+
+    @model_validator(mode="after")
+    def validate_bounds(self):
+        if any(low >= high for low, high in zip(self.minimum, self.maximum)):
+            raise ValueError("box minimum must be below maximum on every axis")
+        return self
+
+
+class RayPlane(RayMaterial):
+    point: RayVec3
+    normal: RayVec3
+
+    @model_validator(mode="after")
+    def validate_normal(self):
+        if sum(component * component for component in self.normal) <= 1e-20:
+            raise ValueError("plane normal cannot be zero")
         return self
 
 
@@ -261,6 +290,8 @@ class RayLight(BaseModel):
 class RayScene(BaseModel):
     camera: RayCamera = Field(default_factory=RayCamera)
     spheres: list[RaySphere] = Field(default_factory=list)
+    boxes: list[RayBox] = Field(default_factory=list)
+    planes: list[RayPlane] = Field(default_factory=list)
     lights: list[RayLight] = Field(default_factory=list)
     background: RayVec3 = (0.58, 0.72, 0.95)
 
@@ -272,24 +303,42 @@ class RayScene(BaseModel):
 
 
 def benchmark_ray_scene() -> RayScene:
-    """A sky, floor, lit objects, and a reflective sphere for varied tile cost."""
+    """A lit studio scene with refractive glass, mirrors, boxes, and shadows."""
     return RayScene(
+        camera=RayCamera(
+            position=(0.0, 1.25, 8.0),
+            look_at=(0.0, 0.15, -1.5),
+            vertical_fov_degrees=40.0,
+        ),
         spheres=[
-            # A large sphere acts as a simple ground plane.
-            RaySphere(center=(0.0, -1001.0, -1.0), radius=1000.0,
-                      color=(0.72, 0.72, 0.68), reflectivity=0.04),
-            RaySphere(center=(-1.55, 0.0, -1.25), radius=0.85,
-                      color=(0.88, 0.16, 0.10), reflectivity=0.08),
-            RaySphere(center=(0.0, 0.0, -1.5), radius=0.82,
-                      color=(0.10, 0.28, 0.82), reflectivity=0.18),
-            RaySphere(center=(1.55, 0.0, -1.25), radius=0.85,
-                      color=(0.82, 0.78, 0.68), reflectivity=0.82),
-            RaySphere(center=(-0.35, -0.43, 0.05), radius=0.42,
-                      color=(0.12, 0.62, 0.22), reflectivity=0.05),
+            RaySphere(center=(-2.05, -0.05, -1.45), radius=0.92,
+                      color=(0.88, 0.12, 0.08), reflectivity=0.12),
+            RaySphere(center=(-0.2, -0.08, -1.65), radius=0.9,
+                      color=(0.08, 0.24, 0.82), reflectivity=0.58),
+            RaySphere(center=(1.65, -0.02, -1.35), radius=0.88,
+                      color=(0.5, 0.88, 0.96), reflectivity=0.06,
+                      transparency=0.9, refractive_index=1.48),
+            RaySphere(center=(-0.95, -0.58, 0.05), radius=0.38,
+                      color=(0.95, 0.58, 0.12), reflectivity=0.3),
+            RaySphere(center=(0.65, -0.63, 0.35), radius=0.32,
+                      color=(0.25, 0.82, 0.48), reflectivity=0.16),
+        ],
+        boxes=[
+            RayBox(minimum=(-3.15, -1.0, -3.7), maximum=(-2.45, 0.95, -3.0),
+                   color=(0.88, 0.48, 0.08), reflectivity=0.22),
+            RayBox(minimum=(2.35, -1.0, -3.5), maximum=(3.0, 0.75, -2.85),
+                   color=(0.12, 0.72, 0.68), reflectivity=0.18),
+            RayBox(minimum=(0.35, -1.0, -4.3), maximum=(1.1, 0.1, -3.55),
+                   color=(0.75, 0.9, 0.95), reflectivity=0.04,
+                   transparency=0.76, refractive_index=1.36),
+        ],
+        planes=[
+            RayPlane(point=(0.0, -1.0, 0.0), normal=(0.0, 1.0, 0.0),
+                     color=(0.7, 0.7, 0.66), reflectivity=0.16),
         ],
         lights=[
-            RayLight(position=(-3.5, 5.0, 3.5), intensity=42.0),
-            RayLight(position=(4.0, 3.0, -0.5), color=(0.72, 0.82, 1.0), intensity=24.0),
+            RayLight(position=(-3.5, 6.0, 4.5), intensity=46.0),
+            RayLight(position=(4.5, 4.0, -0.5), color=(0.72, 0.84, 1.0), intensity=28.0),
         ],
     )
 

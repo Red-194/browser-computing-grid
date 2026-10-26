@@ -97,7 +97,7 @@ def _rt_cross(a, b):
     )
 
 
-def _rt_hit(origin, direction, sphere, minimum=RAY_EPSILON, maximum=math.inf):
+def _rt_sphere_hit(origin, direction, sphere, minimum=RAY_EPSILON, maximum=math.inf):
     offset = _rt_sub(origin, sphere.center)
     half_b = _rt_dot(offset, direction)
     c = _rt_dot(offset, offset) - sphere.radius * sphere.radius
@@ -115,25 +115,93 @@ def _rt_hit(origin, direction, sphere, minimum=RAY_EPSILON, maximum=math.inf):
     return distance, point, normal
 
 
+def _rt_box_hit(origin, direction, box, minimum=RAY_EPSILON, maximum=math.inf):
+    near, far = -math.inf, math.inf
+    near_normal, far_normal = (0.0, 0.0, 0.0), (0.0, 0.0, 0.0)
+    for axis in range(3):
+        if abs(direction[axis]) <= 1e-15:
+            if origin[axis] < box.minimum[axis] or origin[axis] > box.maximum[axis]:
+                return None
+            continue
+        first = (box.minimum[axis] - origin[axis]) / direction[axis]
+        second = (box.maximum[axis] - origin[axis]) / direction[axis]
+        first_normal = [0.0, 0.0, 0.0]
+        second_normal = [0.0, 0.0, 0.0]
+        first_normal[axis], second_normal[axis] = -1.0, 1.0
+        if first > second:
+            first, second = second, first
+            first_normal, second_normal = second_normal, first_normal
+        if first > near:
+            near, near_normal = first, first_normal
+        if second < far:
+            far, far_normal = second, second_normal
+        if near > far:
+            return None
+    distance, normal = (near, near_normal) if near > minimum else (far, far_normal)
+    if distance <= minimum or distance >= maximum:
+        return None
+    return distance, _rt_add(origin, _rt_scale(direction, distance)), tuple(normal)
+
+
+def _rt_plane_hit(origin, direction, plane, minimum=RAY_EPSILON, maximum=math.inf):
+    normal = _rt_normalize(plane.normal)
+    denominator = _rt_dot(direction, normal)
+    if abs(denominator) <= 1e-15:
+        return None
+    distance = _rt_dot(_rt_sub(plane.point, origin), normal) / denominator
+    if distance <= minimum or distance >= maximum:
+        return None
+    return distance, _rt_add(origin, _rt_scale(direction, distance)), normal
+
+
+def _rt_nearest(origin, direction, scene, maximum, counters):
+    nearest = None
+    closest = maximum
+    for sphere in scene.spheres:
+        counters["sphere_tests"] += 1
+        hit = _rt_sphere_hit(origin, direction, sphere, maximum=closest)
+        if hit is not None:
+            closest, point, normal = hit
+            nearest = (closest, point, normal, sphere)
+    for box in scene.boxes:
+        counters["box_tests"] += 1
+        hit = _rt_box_hit(origin, direction, box, maximum=closest)
+        if hit is not None:
+            closest, point, normal = hit
+            nearest = (closest, point, normal, box)
+    for plane in scene.planes:
+        counters["plane_tests"] += 1
+        hit = _rt_plane_hit(origin, direction, plane, maximum=closest)
+        if hit is not None:
+            closest, point, normal = hit
+            nearest = (closest, point, normal, plane)
+    return nearest
+
+
+def _rt_refract(direction, normal, front_face, refractive_index):
+    eta = 1.0 / refractive_index if front_face else refractive_index
+    cosine = min(1.0, max(0.0, -_rt_dot(direction, normal)))
+    sine_squared = 1.0 - cosine * cosine
+    if eta * eta * sine_squared > 1.0:
+        return None
+    perpendicular = _rt_scale(_rt_add(direction, _rt_scale(normal, cosine)), eta)
+    parallel = _rt_scale(normal, -math.sqrt(abs(1.0 - _rt_dot(perpendicular, perpendicular))))
+    return _rt_normalize(_rt_add(perpendicular, parallel))
+
+
 def _rt_trace_cost(origin, direction, scene, depth, max_bounces):
     """Count approximate renderer operations for one primary/secondary ray."""
-    counters = {"rays": 1, "sphere_tests": 0, "light_samples": 0}
-    nearest = None
-    nearest_index = -1
-    closest = math.inf
-    for index, sphere in enumerate(scene.spheres):
-        counters["sphere_tests"] += 1
-        hit = _rt_hit(origin, direction, sphere, maximum=closest)
-        if hit is not None:
-            closest = hit[0]
-            nearest = hit
-            nearest_index = index
-
+    counters = {
+        "rays": 1, "sphere_tests": 0, "box_tests": 0,
+        "plane_tests": 0, "light_samples": 0,
+    }
+    nearest = _rt_nearest(origin, direction, scene, math.inf, counters)
     if nearest is None:
         return counters
 
-    _, point, normal = nearest
-    sphere = scene.spheres[nearest_index]
+    _, point, outward_normal, material = nearest
+    front_face = _rt_dot(direction, outward_normal) < 0.0
+    normal = outward_normal if front_face else _rt_scale(outward_normal, -1.0)
     for light in scene.lights:
         to_light = _rt_sub(light.position, point)
         light_distance = math.sqrt(_rt_dot(to_light, to_light))
@@ -143,28 +211,60 @@ def _rt_trace_cost(origin, direction, scene, depth, max_bounces):
         if _rt_dot(normal, light_direction) <= 0.0:
             continue
         counters["light_samples"] += 1
-        shadow_origin = _rt_add(point, _rt_scale(normal, RAY_EPSILON))
         counters["rays"] += 1
-        for index, other in enumerate(scene.spheres):
-            if index == nearest_index:
-                continue
-            counters["sphere_tests"] += 1
-            if _rt_hit(
-                shadow_origin,
-                light_direction,
-                other,
-                maximum=light_distance - RAY_EPSILON,
-            ) is not None:
+        shadow_origin = _rt_add(point, _rt_scale(normal, RAY_EPSILON * 2.0))
+        remaining = light_distance - RAY_EPSILON
+        crossings = len(scene.spheres) * 2 + len(scene.boxes) * 2 + len(scene.planes) + 1
+        for _ in range(crossings):
+            shadow_hit = _rt_nearest(shadow_origin, light_direction, scene, remaining, counters)
+            if shadow_hit is None:
+                break
+            shadow_distance, shadow_point, _, blocker = shadow_hit
+            if blocker.transparency <= 0.0:
+                break
+            advance = shadow_distance + RAY_EPSILON * 2.0
+            shadow_origin = _rt_add(shadow_origin, _rt_scale(light_direction, advance))
+            remaining -= advance
+            if remaining <= RAY_EPSILON:
                 break
 
-    if sphere.reflectivity > 0.0 and depth < max_bounces:
-        reflected = _rt_sub(
-            direction,
-            _rt_scale(normal, 2.0 * _rt_dot(direction, normal)),
-        )
+    if depth >= max_bounces:
+        return counters
+
+    reflectivity = material.reflectivity
+    transparency = material.transparency
+    refracted = _rt_refract(direction, normal, front_face, material.refractive_index) if transparency > 0 else None
+    reflection_weight = reflectivity
+    transmission_weight = transparency
+    if transparency > 0:
+        if refracted is None:
+            reflection_weight += transparency
+            transmission_weight = 0.0
+        else:
+            cosine = min(1.0, abs(_rt_dot(direction, normal)))
+            ratio = (1.0 - material.refractive_index) / (1.0 + material.refractive_index)
+            r0 = ratio * ratio
+            fresnel = r0 + (1.0 - r0) * (1.0 - cosine) ** 5
+            reflection_weight += transparency * fresnel
+            transmission_weight *= 1.0 - fresnel
+
+    if reflection_weight > 0:
+        reflected = _rt_sub(direction, _rt_scale(normal, 2.0 * _rt_dot(direction, normal)))
+        counters["rays"] += 1
         child = _rt_trace_cost(
-            _rt_add(point, _rt_scale(normal, RAY_EPSILON)),
+            _rt_add(point, _rt_scale(normal, RAY_EPSILON * 2.0)),
             _rt_normalize(reflected),
+            scene,
+            depth + 1,
+            max_bounces,
+        )
+        for key, value in child.items():
+            counters[key] += value
+    if transmission_weight > 0 and refracted is not None:
+        counters["rays"] += 1
+        child = _rt_trace_cost(
+            _rt_sub(point, _rt_scale(normal, RAY_EPSILON * 2.0)),
+            refracted,
             scene,
             depth + 1,
             max_bounces,
@@ -209,7 +309,10 @@ def _raytracing(config) -> float:
                 camera.position, direction, scene, depth=0, max_bounces=config.max_bounces
             )
             # These are deterministic estimated work units, not milliseconds.
-            total += work["rays"] + work["sphere_tests"] + work["light_samples"]
+            total += (
+                work["rays"] + work["sphere_tests"] + work["box_tests"]
+                + work["plane_tests"] + work["light_samples"]
+            )
 
     sample_count = RAYTRACING_COST_SAMPLES ** 2
     return max(

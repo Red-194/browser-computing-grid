@@ -6,6 +6,8 @@ from pydantic import ValidationError
 
 from app.models.jobs import (
     RayCamera,
+    RayBox,
+    RayPlane,
     RayScene,
     RaySphere,
     RayTracingConfig,
@@ -20,7 +22,10 @@ from app.services.splitters.raytracing import RaytracingSplitter
 def test_raytracing_config_defaults_to_the_benchmark_scene():
     config = RayTracingConfig()
     assert config.scene.spheres
+    assert config.scene.boxes
+    assert config.scene.planes
     assert config.scene.lights
+    assert any(sphere.transparency > 0 for sphere in config.scene.spheres)
     assert config.samples_per_pixel == 2
     assert config.max_bounces == 2
 
@@ -32,6 +37,10 @@ def test_raytracing_config_rejects_invalid_dimensions_and_scene_values():
         RaySphere(center=(0, 0, 0), radius=1, color=(1.1, 0, 0))
     with pytest.raises(ValidationError):
         RayCamera(position=(0, 0, 0), look_at=(0, 0, 0))
+    with pytest.raises(ValidationError):
+        RayBox(minimum=(1, 0, 0), maximum=(0, 1, 1), color=(1, 1, 1))
+    with pytest.raises(ValidationError):
+        RayPlane(point=(0, 0, 0), normal=(0, 0, 0), color=(1, 1, 1))
 
 
 def test_raytracing_config_accepts_large_render_settings():

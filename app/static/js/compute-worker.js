@@ -1,10 +1,10 @@
-import init, { execute_task } from "/runtime/runtime.js?v=raytracing-20261027-3";
+import init, { execute_task } from "/runtime/runtime.js?v=raytracing-20261027-4";
 
 let wasmReady = false;
 
 async function initializeWasm() {
 
-    await init("/runtime/runtime_bg.wasm?v=raytracing-20261027-3");
+    await init("/runtime/runtime_bg.wasm?v=raytracing-20261027-4");
     wasmReady = true;
 
     self.postMessage({
