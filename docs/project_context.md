@@ -2,7 +2,7 @@
 
 Working notes so the project's aim, current state and open design questions don't have to be re-explained. Items marked **Decided** come from the project owner. Items marked **Proposed** are suggestions that still need a decision. Items marked **Finding** are things that were checked or measured.
 
-Last updated: 2026-10-26.
+Last updated: 2026-10-27.
 
 ## 1. Aim
 
@@ -40,7 +40,7 @@ Sprint-based. Done:
 
 The `frontend-ui` branch (teammate's jobs page, dashboard worker view, Busy/Idle status) is merged into `main` (`8684f0a`); see "Jobs page API" in section 5.
 
-Measured result (see [results/scheduler_results.md](results/scheduler_results.md)): on Mandelbrot with a laptop tab and a phone, the adaptive algorithms take about 13 s against 28 s for `random` (2.2x, 18 runs against 5). No measured gain yet on N-Queens, and SAT has not been run live with the adaptive code.
+Measured result (see [results/scheduler_results.md](results/scheduler_results.md)): on Mandelbrot with a laptop tab and a phone, the adaptive algorithms take about 13 s against 28 s for `random` (2.2x, 18 runs against 5). No measured gain yet on N-Queens, and SAT has not been run live with the adaptive code (its cost model was added 2026-10-27, see "SAT cost model").
 
 Next: decide the default algorithm (still `random`; `boinc` is the data-backed candidate for Mandelbrot only); run SAT (`sat_batch`) and repeat N-Queens n=17 under each algorithm with `scripts/bench_scheduler.py`; test with more than two devices; demo plan (section 12, drafted, not yet approved).
 
@@ -178,7 +178,7 @@ Requested by the owner: adaptive like BOINC, modular, several algorithms to try,
 - Live: `GET /scheduler` (active and available), `PUT /scheduler` with `{"name": "boinc"}`, `GET /scheduler/stats` (what has been measured per worker and workload). No authentication, like the rest of the API.
 - `python scripts/simulate_schedulers.py [--scenario NAME] [--seeds N] [--no-timeouts]`.
 
-**What it learns (`stats.py`).** Modelled on BOINC's per-host, per-application runtime estimate (mean and variance of seconds per unit of work). For each (worker, workload): running mean and variance of seconds per unit, fed by the `execution_time_ms` each result already carries. Estimate fallback: the worker's own history once it has 3 samples (BOINC uses 10; we have few devices and short jobs), else the workload average scaled by how fast that worker has been on other workloads, else the plain workload average, else unknown. Reliability per worker comes from timeouts and losses (decayed). After 3 timeouts in a row a worker is quarantined from the adaptive algorithms for 30 s, doubling on each repeat offence up to 10 min, reset by a good result or a reconnect. Task size ("cost") comes from `cost.py`: compression = chunk bytes, regex = characters scanned, Mandelbrot = pixel count times the average iterations per pixel, estimated from a 4x4 grid of sample pixels per tile run for up to 64 iterations (a sample still inside is assumed to run to `max_iterations`; rank correlation 0.995 with the true iteration counts on 48 tiles, total within 11%, 0.28 s for 20,000 tiles), SAT = 1 (its size cannot be known up front). N-Queens uses a curve fitted to measured node counts, `exp(0.341 r + 0.0542 r^2)` for `r` rows left to place (about 490 nodes at r = 8, 5 million at r = 14, within about 2x at r = 15); without it every N-Queens task looked the same size and the scheduler could not tell a tiny task from a huge one.
+**What it learns (`stats.py`).** Modelled on BOINC's per-host, per-application runtime estimate (mean and variance of seconds per unit of work). For each (worker, workload): running mean and variance of seconds per unit, fed by the `execution_time_ms` each result already carries. Estimate fallback: the worker's own history once it has 3 samples (BOINC uses 10; we have few devices and short jobs), else the workload average scaled by how fast that worker has been on other workloads, else the plain workload average, else unknown. Reliability per worker comes from timeouts and losses (decayed). After 3 timeouts in a row a worker is quarantined from the adaptive algorithms for 30 s, doubling on each repeat offence up to 10 min, reset by a good result or a reconnect. Task size ("cost") comes from `cost.py`: compression = chunk bytes, regex = characters scanned, Mandelbrot = pixel count times the average iterations per pixel, estimated from a 4x4 grid of sample pixels per tile run for up to 64 iterations (a sample still inside is assumed to run to `max_iterations`; rank correlation 0.995 with the true iteration counts on 48 tiles, total within 11%, 0.28 s for 20,000 tiles), SAT = estimated clause visits (see "SAT cost model" below). N-Queens uses a curve fitted to measured node counts, `exp(0.341 r + 0.0542 r^2)` for `r` rows left to place (about 490 nodes at r = 8, 5 million at r = 14, within about 2x at r = 15); without it every N-Queens task looked the same size and the scheduler could not tell a tiny task from a huge one.
 
 **Algorithms**
 - `random`, `round_robin`: the baselines. Round-robin now truly rotates one task per worker (before, it favoured the first worker's slots). They ignore speed and quarantine.
@@ -214,6 +214,16 @@ Requested by the owner: adaptive like BOINC, modular, several algorithms to try,
 - The avoid rule above had a flaw, found live on the laptop-plus-phone setup: after the heaviest Mandelbrot tile timed out on the fast tab, the rule held it for the phone (about 50x slower) while the fast tab sat idle, and stealing could not help because a waiting task disables it. One `ucb` run took 63.4 s against about 13 s. Fix (`3ca44a3`): a task is held for another worker only if that worker's estimated time for it is at most `AVOID_MAX_SLOWDOWN` (3x) the time on the worker it was taken from. No outlier in the 9 adaptive Mandelbrot runs after the fix.
 - A timeout taught the scheduler nothing, so a worker that had slowed down kept being believed fast and got work it could not finish in time. A timeout now also records a speed sample equal to the time waited (`SpeedTracker.record_lower_bound`; the true time can only be longer).
 - `POST /disconnect/{uuid}` used to be undone at once, because the tab reconnects by itself after 3 s. It now tells the tab not to (`reconnect=false` is the default; `?reconnect=true` imitates a network blip). The tab shows "Disconnected by controller (reload to reconnect)".
+
+### SAT cost model (built 2026-10-27)
+
+`cost.py` priced every SAT task at 1, so the scheduler could not tell tasks apart. The kernel (`runtime/src/kernels/sat.rs`) is plain DPLL (first unassigned variable, true first, unit propagation), so time follows clause visits. A Python port of it (`scripts/sat_cost_study.py`) counted visits on 1,050 random 3-SAT instances (20 to 45 variables, 3 to 6 clauses per variable) and on 5-variable cubes of 40-variable formulas.
+
+- **Finding: batch instances (`sat_batch`).** `ln(visits) = -5.50 + 0.003 n + 2.907 ln m + 0.0298 n exp(-(m/n - 4.3)^2)` for `n` variables and `m` clauses. Spearman 0.83, typical error 2.2x (225 fresh instances: 0.82, 2.21x, bias 0.93x). Size alone gives 0.73 (variables) to 0.79 (clauses); the hardness term near 4.3 clauses per variable adds the rest.
+- **Finding: the floor is the instances, not the model.** Instances with the same size and ratio differ up to 30x (30 variables, 128 clauses: 2,852 to 86,051 visits), so no estimate made before running can do much better.
+- **Finding: the example batch is tiny.** 30 variables and 128 clauses is about 100 DPLL nodes, microseconds in WASM, so `sat_batch` jobs like this are limited by the round trip, not by scheduling, as with compression.
+- **Cube tasks (`sat` with `split_depth`).** The fixed literals are applied and unit propagation run (cheap) when the task is priced. A cube that conflicts there costs one pass over the clauses (average 368 visits against 5,672 for the rest). Otherwise cost is `m exp(0.104 free - 0.232)`. Spearman is 0.42 among surviving cubes and 0.76 including the conflicts; within one formula the largest surviving cube is a median 11x the smallest.
+- **Limits:** random 3-SAT only (structured instances will behave differently); visits are a proxy for time and were not checked against browser timings; the cube fit uses one formula size. Tests: `tests/test_sat_cost.py`. Not yet run live: the next check is whether `boinc` beats `random` on a mixed-size `sat_batch` with the new prices.
 
 ### Work stealing (built 2026-10-26)
 
@@ -269,7 +279,8 @@ Open items: `MAX_PER_THREAD`, the 10 ms result flush, the 256 to 1,000 window an
 The teammate's jobs page needed three things from the backend, built on the control blocks (their version tracked tasks in a separate `task_assignments` registry, which was dropped):
 - `GET /jobs/{id}/tasks`: one row per task with `worker_id` and a status (`Pending` = waiting, `Assigned` = running, `Completed`, `Failed`), 404 for an unknown job.
 - `GET /jobs/{id}/result`: 404 for an unknown job, HTTP 202 (same JSON body) while the job runs, 200 when done; a failed job still returns the `"Job failed."` body, and the page now stops polling and shows Failed (`failJob` in `jobs.js`, not tested in a browser).
-- The worker page shows Busy / Idle / Disconnected, counted across the thread pool. The dashboard Disconnect button now calls `/disconnect/{uuid}?reconnect=false`.
+- The worker page shows Busy / Idle / Disconnected, counted across the thread pool. The dashboard Disconnect button calls `/disconnect/{uuid}?reconnect=false`.
+- **Praveen's PR #1 (`c8c0cfc`, merged 2026-10-27, frontend only):** the dashboard worker table has an Action column (Disconnect for live workers, Remove for offline ones, both call the disconnect endpoint, so Remove is untested against an offline worker), the worker detail modal has a Disconnect button again, and the N-Queens board size limit on the jobs page is 24 (was 14), matching the API. The browser fallback `findOneSolution(n)` now runs up to n=24 and its cost there is unchecked. A stray `changes.patch` from that commit was removed.
 Tests: `tests/test_jobs_page_api.py`.
 
 ### Benchmarking

@@ -4,9 +4,9 @@ The scheduler measures speed as "seconds per unit of work" so one worker's
 speed on small tasks can be used to guess its time on big ones. The unit is
 whatever is natural for the workload and only has to be consistent within it.
 
-Where the size of a task cannot be known before running it (SAT),
-the cost is 1, so the speed estimate becomes "seconds per task" and the spread
-of the samples carries the uncertainty.
+Where the size of a task cannot be known before running it, the cost is 1, so
+the speed estimate becomes "seconds per task" and the spread of the samples
+carries the uncertainty. SAT is only partly knowable: see `_sat`.
 """
 import math
 
@@ -66,6 +66,77 @@ def _nqueens(config) -> float:
     return math.exp(0.341 * rows_left + 0.0542 * rows_left * rows_left)
 
 
+# SAT: the kernel is plain DPLL, so a task's time is the number of clause visits,
+# and that depends on the formula far more than on its size. Fitted on 1,050
+# random 3-SAT instances (20 to 45 variables, 3 to 6 clauses per variable) with a
+# Python port of the kernel (scripts/sat_cost_study.py): the estimate ranks cost
+# with Spearman 0.83 and is off by about 2.2x. Instances with the same size still
+# differ by up to 30x, so that is the limit of any estimate made before running.
+# Hard instances sit near 4.3 clauses per variable.
+SAT_FIT = (-5.5035, 0.003, 2.9068, 0.0298)
+SAT_HARD_RATIO = 4.3
+# Cube tasks (a fixed prefix of variables): the fixed literals are applied and
+# unit propagation run first, which is cheap. A cube that conflicts there ends
+# after one pass (15x cheaper than the rest on average); otherwise the cost grows
+# with the variables still free (fit on 5-variable cubes of 40-variable formulas,
+# Spearman 0.42 within the cubes that survive, 0.76 including the conflicts).
+SAT_CUBE_SLOPE = 0.104
+SAT_CUBE_OFFSET = -0.232
+
+
+def _sat_propagate(num_variables, clauses, fixed):
+    """Apply `fixed` and unit-propagate. Returns the number of free variables, or
+    None if that already conflicts."""
+    value = [0] * (num_variables + 1)
+    for literal in fixed:
+        sign = 1 if literal > 0 else -1
+        if value[abs(literal)] not in (0, sign):
+            return None
+        value[abs(literal)] = sign
+
+    changed = True
+    while changed:
+        changed = False
+        for clause in clauses:
+            unassigned = 0
+            unit = 0
+            for literal in clause:
+                current = value[abs(literal)] * (1 if literal > 0 else -1)
+                if current == 1:
+                    break
+                if current == 0:
+                    unassigned += 1
+                    unit = literal
+            else:
+                if unassigned == 0:
+                    return None
+                if unassigned == 1:
+                    value[abs(unit)] = 1 if unit > 0 else -1
+                    changed = True
+
+    return sum(1 for variable in range(1, num_variables + 1) if value[variable] == 0)
+
+
+def _sat(config) -> float:
+    n = config.num_variables
+    m = len(config.clauses)
+    if m == 0 or n <= 0:
+        return 1.0
+
+    if config.fixed_assignments:
+        free = _sat_propagate(n, config.clauses, config.fixed_assignments)
+        if free is None:
+            return float(m)
+        return m * math.exp(SAT_CUBE_SLOPE * free + SAT_CUBE_OFFSET)
+
+    intercept, per_variable, per_log_clause, hard_weight = SAT_FIT
+    ratio = m / n
+    hardness = n * math.exp(-((ratio - SAT_HARD_RATIO) ** 2))
+    return math.exp(
+        intercept + per_variable * n + per_log_clause * math.log(m) + hard_weight * hardness
+    )
+
+
 def _unknown(config) -> float:
     return 1.0
 
@@ -75,7 +146,7 @@ _ESTIMATORS = {
     "regex": _regex,
     "mandelbrot": _mandelbrot,
     "nqueens": _nqueens,
-    "sat": _unknown,
+    "sat": _sat,
 }
 
 
