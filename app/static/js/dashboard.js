@@ -1154,7 +1154,9 @@ async function disconnectWorker(uuid) {
 
         const response =
             await fetch(
-                `/disconnect/${uuid}`,
+                // The worker stays disconnected until its page is reloaded.
+                // (?reconnect=true would make the tab reconnect after a few seconds.)
+                `/disconnect/${uuid}?reconnect=false`,
                 {
                     method: "POST"
                 }

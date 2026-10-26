@@ -717,6 +717,8 @@ function setJobState(state) {
     } else if (state === "Completed") {
         jobStateElement.classList.add("state-completed");
         jobStateElement.style.color = "var(--green, #39d98a)";
+    } else if (state === "Failed") {
+        jobStateElement.style.color = "var(--red, #ff6678)";
     } else {
         jobStateElement.style.color = "";
     }
@@ -921,6 +923,13 @@ async function checkJobResult() {
         // A missing in-memory job can happen after a server restart.
         if (response.status === 404) {
             console.warn("Job result endpoint returned 404:", data);
+            return;
+        }
+
+        // A task ran out of retries, so the job can never complete. Stop
+        // polling and say so instead of showing "Running" forever.
+        if (data.status === "failed" || data.message === "Job failed.") {
+            failJob(data);
             return;
         }
 
@@ -1299,6 +1308,20 @@ function finishJob() {
 
     updateProgress(100);
     setJobState("Completed");
+}
+
+// Mark the job as failed and stop polling.
+function failJob(data) {
+    completed = true;
+    stopResultPolling();
+
+    const firstError = (data.failed_tasks || [])[0];
+    const reason = firstError && firstError.error
+        ? ` Task ${firstError.task_id}: ${firstError.error}`
+        : "";
+
+    setJobState("Failed");
+    setJobStatus(`Job failed.${reason}`, "error");
 }
 
 // Clean up when leaving the page.
