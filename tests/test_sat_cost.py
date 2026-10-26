@@ -27,7 +27,7 @@ def test_cube_that_conflicts_at_once_is_cheap():
     conflicting = sat_cost(10, clauses, [-1])
     surviving = sat_cost(10, clauses, [1])
     assert conflicting < surviving
-    assert conflicting == len(clauses)
+    assert conflicting <= len(clauses)
 
 
 def test_cube_with_contradictory_fixed_literals_is_cheap():

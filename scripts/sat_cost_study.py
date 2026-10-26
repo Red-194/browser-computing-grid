@@ -106,9 +106,18 @@ def main():
                     num_variables=n, clauses=instance.clauses, fixed_assignments=[])))
 
     errors = [math.log(e / a) for e, a in zip(estimated, actual)]
-    print(f"{len(actual)} instances; Spearman {spearman(estimated, actual):.2f}; "
+    print(f"whole instances: {len(actual)}; Spearman {spearman(estimated, actual):.2f}; "
           f"typical error x{math.exp(statistics.pstdev(errors)):.2f}; "
           f"bias x{math.exp(statistics.mean(errors)):.2f}")
+
+    actual, estimated = [], []
+    for instance in make_random_3sat(args.seeds // 2 or 1, 45, 191, 77):
+        for cube in range(32):
+            fixed = [v if cube & (1 << (v - 1)) else -v for v in range(1, 6)]
+            actual.append(visits(45, instance.clauses, fixed))
+            estimated.append(task_cost("sat", SATTaskConfig(
+                num_variables=45, clauses=instance.clauses, fixed_assignments=fixed)))
+    print(f"cubes (5 fixed variables): {len(actual)}; Spearman {spearman(estimated, actual):.2f}")
 
 
 if __name__ == "__main__":

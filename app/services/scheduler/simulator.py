@@ -96,7 +96,9 @@ class Simulation:
         self.job = JobPCB.create(uuid4(), workload, list(range(len(tasks))), max_retries=max_retries)
         self.worker_pcbs = {w.uuid: WorkerPCB(w.uuid, capacity=w.cores) for w in workers}
         self.worker_objects = [
-            SimpleNamespace(uuid=w.uuid, cores=w.cores, state=WorkerStates.IDLE) for w in workers
+            # Simulated workers run their tasks one after another (see `_start`).
+            SimpleNamespace(uuid=w.uuid, cores=w.cores, threads=1, state=WorkerStates.IDLE)
+            for w in workers
         ]
 
         self._events: list = []

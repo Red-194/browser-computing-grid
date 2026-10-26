@@ -125,15 +125,47 @@ Closing a worker mid-job (N-Queens n=17, 2,786 tasks), twice: the job finished w
 | Timeouts, reallocation, quarantine | simulator and `tests/test_scheduler_integration.py`; seen live (task timeouts requeued) |
 | Work stealing, attempt handling | `tests/test_work_stealing.py`; seen live |
 | Recovery from a lost worker | `tests/test_reconnect_and_failed_job.py`; two live runs |
-| Whole suite | 237 tests pass |
+| Whole suite | 246 tests pass |
+
+## SAT (2026-10-27)
+
+Raw rows are in `scheduler_comparison.csv` (sessions S6, S6b, S7, c90b, P1, P2). Task prices come from the SAT cost model (see
+`project_context.md`, "SAT cost model"): a closed-form model for whole instances and Knuth tree-size estimates for cubes.
+
+**Does the price match the browser?** Per-task `execution_time_ms` was recorded and compared with the price (Spearman rank
+correlation, 2 headless Chrome tabs):
+
+| Check | Spearman |
+|---|---|
+| Solver clause visits (Python port) against browser ms, 100 instances | 1.00 |
+| Closed-form price against browser ms, 100 mixed-size instances | 0.78 (variable count alone also 0.78) |
+| Closed-form price, 96 instances of 50 variables at ratios 3.0 to 6.0 | 0.67 (clause count alone 0.41) |
+| Knuth price (8 dives) against browser ms, 64 cubes of a 90-variable formula | 0.78 |
+
+**Scheduler comparison.** Median seconds (range) on 100 mixed instances of 60 to 85 variables, 5 to 6 runs each:
+
+| Setup | random | round_robin | fastest_first | boinc (stealing on / off) | ucb |
+|---|---|---|---|---|---|
+| 4-thread tab + 1-thread tab, one CPU | 4.0 (3.4 to 6.7) | 5.6 (4.1 to 8.4) | 3.7 (3.1 to 10.1) | 7.1 (3.1 to 9.8) / 5.4 (3.2 to 8.8) | 4.6 (3.4 to 8.8) |
+| 4-thread tab + phone (about 5x slower per task) | 3.2 (2.8 to 4.4) | 3.7 (2.6 to 4.4) | 3.3 (2.8 to 4.0) | 3.3 (2.8 to 4.2) / 3.5 (2.6 to 4.5) | 3.8 (3.5 to 3.9) |
+
+- **No scheduler beats `random` on SAT.** The spread of one scheduler (3 s to 10 s) is larger than any gap between them.
+  Instances of the same size differ up to 30x in work, so the finish time is set by who gets the rare very hard instance.
+- Cube jobs (90 variables, depth 6) are about 0.4 s of compute and finish in about 0.9 s for every scheduler, so they
+  cannot separate the schedulers.
+- A fix made on the way: `finish_time` treated a 4-thread tab as running one task at a time, which gave a 1-thread tab half
+  the work; it now divides the queue by the thread count.
+- Pricing cost: Knuth dives run on the controller at submit. 8 dives on a 64-cube, 90-variable job took 3 s end to end (about
+  1 s of it pricing); 3 dives take 0.9 s.
+- Caveats: random 3-SAT only; the first setup shares one CPU between the tabs; the phone setup has one phone.
 
 ## Limitations (read before citing these numbers)
 
 1. **Two devices only**, one of them 50x slower. The project target is up to 10 devices.
 2. **Small samples**: 2 to 5 runs per configuration. The adaptive-versus-random gap is large compared with the spread, but the
    differences among `fastest_first`, `boinc` and `ucb`, and the effect of stealing, are not resolved.
-3. **One workload shows the gain.** Mandelbrot is where task sizes can be estimated. N-Queens and SAT task sizes cannot be known
-   in advance (N-Queens uses a fitted curve; SAT uses 1), and there the result is a tie or worse.
+3. **One workload shows the gain.** Mandelbrot is where task sizes can be estimated. N-Queens (a fitted curve) and SAT (a model of
+   the solver's work, see the SAT section) can only be estimated roughly, and there the result is a tie or worse.
 4. The Chrome tab ran with lowered CPU priority throughout S2 and S3, so absolute times are slower than they would otherwise be.
    All configurations share this, so comparisons are fair, but absolute seconds should not be quoted as the system's speed.
 5. The phone is a consumer device on Wi-Fi; its connection dropped once (screen lock) after the S2 runs.

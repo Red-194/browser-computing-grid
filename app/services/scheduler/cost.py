@@ -9,6 +9,7 @@ the speed estimate becomes "seconds per task" and the spread of the samples
 carries the uncertainty. SAT is only partly knowable: see `_sat`.
 """
 import math
+import random
 
 
 def _compression(config) -> float:
@@ -75,46 +76,69 @@ def _nqueens(config) -> float:
 # Hard instances sit near 4.3 clauses per variable.
 SAT_FIT = (-5.5035, 0.003, 2.9068, 0.0298)
 SAT_HARD_RATIO = 4.3
-# Cube tasks (a fixed prefix of variables): the fixed literals are applied and
-# unit propagation run first, which is cheap. A cube that conflicts there ends
-# after one pass (15x cheaper than the rest on average); otherwise the cost grows
-# with the variables still free (fit on 5-variable cubes of 40-variable formulas,
-# Spearman 0.42 within the cubes that survive, 0.76 including the conflicts).
-SAT_CUBE_SLOPE = 0.104
-SAT_CUBE_OFFSET = -0.232
+# Cube tasks (a fixed prefix of variables) are priced by Knuth's tree-size
+# estimate: walk down the kernel's own search tree a few times, choosing a random
+# branch at each step, and weight each node by 2 per branching on the way down.
+# The average is an unbiased estimate of the clause visits of the whole tree. On
+# 320 cubes of 45-variable formulas it ranks cost with Spearman 0.94 (8 dives), against 0.68
+# for the closed-form model above applied to the cube (and 0.42 for the variable
+# count). It does not help whole instances (0.50 against 0.60): the kernel stops
+# at the first model, so a satisfiable instance costs less than its whole tree.
+# Dives cost time at submit, on the controller's event loop: about 1 ms a dive at
+# 60 variables, 3.5 ms a task with 3 dives (Spearman 0.85 on 256 cubes of 60
+# variables; 1 dive 0.77, 4 dives 0.86, 8 dives 0.92 at 9 ms). A job of thousands
+# of cubes therefore pays seconds once, when it is submitted.
+SAT_DIVES = 3
 
 
-def _sat_propagate(num_variables, clauses, fixed):
-    """Apply `fixed` and unit-propagate. Returns the number of free variables, or
-    None if that already conflicts."""
+def _sat_dive(num_variables, clauses, fixed, rng) -> float:
+    """One random descent of the search tree: the clause visits it implies."""
     value = [0] * (num_variables + 1)
     for literal in fixed:
         sign = 1 if literal > 0 else -1
         if value[abs(literal)] not in (0, sign):
-            return None
+            return float(len(clauses))  # contradictory prefix: one pass
         value[abs(literal)] = sign
 
-    changed = True
-    while changed:
-        changed = False
-        for clause in clauses:
-            unassigned = 0
-            unit = 0
-            for literal in clause:
-                current = value[abs(literal)] * (1 if literal > 0 else -1)
-                if current == 1:
-                    break
-                if current == 0:
-                    unassigned += 1
-                    unit = literal
-            else:
-                if unassigned == 0:
-                    return None
-                if unassigned == 1:
-                    value[abs(unit)] = 1 if unit > 0 else -1
-                    changed = True
+    estimate, weight = 0.0, 1.0
+    while True:
+        visits, conflict, changed = 0, False, True
+        while changed and not conflict:
+            changed = False
+            for clause in clauses:
+                visits += 1
+                unassigned = 0
+                unit = 0
+                for literal in clause:
+                    current = value[abs(literal)] * (1 if literal > 0 else -1)
+                    if current == 1:
+                        break
+                    if current == 0:
+                        unassigned += 1
+                        unit = literal
+                else:
+                    if unassigned == 0:
+                        conflict = True
+                        break
+                    if unassigned == 1:
+                        changed |= value[abs(unit)] == 0
+                        value[abs(unit)] = 1 if unit > 0 else -1
+        estimate += weight * visits
+        if conflict:
+            return estimate
+        free = next((v for v in range(1, num_variables + 1) if value[v] == 0), None)
+        if free is None:
+            return estimate  # every variable set: a model
+        weight *= 2
+        value[free] = 1 if rng.random() < 0.5 else -1
 
-    return sum(1 for variable in range(1, num_variables + 1) if value[variable] == 0)
+
+def _sat_cube(config) -> float:
+    rng = random.Random(f"{config.num_variables}-{len(config.clauses)}-{config.fixed_assignments}")
+    return sum(
+        _sat_dive(config.num_variables, config.clauses, config.fixed_assignments, rng)
+        for _ in range(SAT_DIVES)
+    ) / SAT_DIVES
 
 
 def _sat(config) -> float:
@@ -124,10 +148,7 @@ def _sat(config) -> float:
         return 1.0
 
     if config.fixed_assignments:
-        free = _sat_propagate(n, config.clauses, config.fixed_assignments)
-        if free is None:
-            return float(m)
-        return m * math.exp(SAT_CUBE_SLOPE * free + SAT_CUBE_OFFSET)
+        return _sat_cube(config)
 
     intercept, per_variable, per_log_clause, hard_weight = SAT_FIT
     ratio = m / n

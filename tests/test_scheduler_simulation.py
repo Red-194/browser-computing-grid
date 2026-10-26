@@ -141,8 +141,8 @@ def _pass(fast_running, slow_running, fast_cores=2):
         tracker.record_result("fast", "job", 1.0, 1.0)
         tracker.record_result("slow", "job", 1.0, 5.0)
     workers = [
-        SimpleNamespace(uuid="fast", cores=fast_cores, state=WorkerStates.IDLE),
-        SimpleNamespace(uuid="slow", cores=2, state=WorkerStates.IDLE),
+        SimpleNamespace(uuid="fast", cores=fast_cores, threads=1, state=WorkerStates.IDLE),
+        SimpleNamespace(uuid="slow", cores=2, threads=1, state=WorkerStates.IDLE),
     ]
     pcbs = {"fast": WorkerPCB("fast", capacity=fast_cores), "slow": WorkerPCB("slow", capacity=2)}
     for i in range(fast_running):

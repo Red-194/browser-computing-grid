@@ -39,3 +39,152 @@ S3,nqueens_n17_depth1_17tasks,boinc,on,1,12.7,"{'chrome':15,'phone':2}",
 S3,nqueens_n16_depth4_19688tasks,boinc,on,1,2.3,"{'chrome':15111,'phone':4577}",
 S3,nqueens_n17_depth1_17tasks,random,n/a,1,10.1,"{'chrome':13,'phone':4}",
 S3,nqueens_n16_depth4_19688tasks,random,n/a,1,2.3,"{'chrome':14624,'phone':5064}",
+S6,sat_batch_100_mixed_40_80vars,random,n/a,1,1.5,"{'ce9a': 81, '1944': 19}","2 headless Chrome tabs (1 and 4 threads, one CPU); thread-aware finish_time"
+S6,sat_batch_100_mixed_40_80vars,random,n/a,2,1.3,"{'1944': 22, 'ce9a': 78}","2 headless Chrome tabs (1 and 4 threads, one CPU); thread-aware finish_time"
+S6,sat_batch_100_mixed_40_80vars,random,n/a,3,1.3,"{'1944': 19, 'ce9a': 81}","2 headless Chrome tabs (1 and 4 threads, one CPU); thread-aware finish_time"
+S6,sat_batch_100_mixed_40_80vars,random,n/a,4,1.5,"{'ce9a': 80, '1944': 20}","2 headless Chrome tabs (1 and 4 threads, one CPU); thread-aware finish_time"
+S6,sat_batch_100_mixed_40_80vars,random,n/a,5,1.4,"{'ce9a': 74, '1944': 26}","2 headless Chrome tabs (1 and 4 threads, one CPU); thread-aware finish_time"
+S6,sat_batch_100_mixed_40_80vars,round_robin,n/a,1,2.4,"{'1944': 50, 'ce9a': 50}","2 headless Chrome tabs (1 and 4 threads, one CPU); thread-aware finish_time"
+S6,sat_batch_100_mixed_40_80vars,round_robin,n/a,2,2.4,"{'1944': 50, 'ce9a': 50}","2 headless Chrome tabs (1 and 4 threads, one CPU); thread-aware finish_time"
+S6,sat_batch_100_mixed_40_80vars,round_robin,n/a,3,2.4,"{'1944': 50, 'ce9a': 50}","2 headless Chrome tabs (1 and 4 threads, one CPU); thread-aware finish_time"
+S6,sat_batch_100_mixed_40_80vars,round_robin,n/a,4,2.4,"{'1944': 50, 'ce9a': 50}","2 headless Chrome tabs (1 and 4 threads, one CPU); thread-aware finish_time"
+S6,sat_batch_100_mixed_40_80vars,round_robin,n/a,5,2.4,"{'1944': 50, 'ce9a': 50}","2 headless Chrome tabs (1 and 4 threads, one CPU); thread-aware finish_time"
+S6,sat_batch_100_mixed_40_80vars,boinc,on,1,1.6,"{'ce9a': 80, '1944': 20}","2 headless Chrome tabs (1 and 4 threads, one CPU); thread-aware finish_time"
+S6,sat_batch_100_mixed_40_80vars,boinc,on,2,1.4,"{'ce9a': 85, '1944': 15}","2 headless Chrome tabs (1 and 4 threads, one CPU); thread-aware finish_time"
+S6,sat_batch_100_mixed_40_80vars,boinc,on,3,1.8,"{'ce9a': 69, '1944': 31}","2 headless Chrome tabs (1 and 4 threads, one CPU); thread-aware finish_time"
+S6,sat_batch_100_mixed_40_80vars,boinc,on,4,2.2,"{'ce9a': 68, '1944': 32}","2 headless Chrome tabs (1 and 4 threads, one CPU); thread-aware finish_time"
+S6,sat_batch_100_mixed_40_80vars,boinc,on,5,1.8,"{'ce9a': 69, '1944': 31}","2 headless Chrome tabs (1 and 4 threads, one CPU); thread-aware finish_time"
+S6,sat_batch_100_mixed_40_80vars,ucb,on,1,3.0,"{'1944': 19, 'ce9a': 81}","2 headless Chrome tabs (1 and 4 threads, one CPU); thread-aware finish_time"
+S6,sat_batch_100_mixed_40_80vars,ucb,on,2,1.4,"{'1944': 13, 'ce9a': 87}","2 headless Chrome tabs (1 and 4 threads, one CPU); thread-aware finish_time"
+S6,sat_batch_100_mixed_40_80vars,ucb,on,3,1.2,"{'1944': 15, 'ce9a': 85}","2 headless Chrome tabs (1 and 4 threads, one CPU); thread-aware finish_time"
+S6,sat_batch_100_mixed_40_80vars,ucb,on,4,2.6,"{'1944': 17, 'ce9a': 83}","2 headless Chrome tabs (1 and 4 threads, one CPU); thread-aware finish_time"
+S6,sat_batch_100_mixed_40_80vars,ucb,on,5,1.4,"{'ce9a': 68, '1944': 32}","2 headless Chrome tabs (1 and 4 threads, one CPU); thread-aware finish_time"
+S6,sat_batch_100_mixed_40_80vars,fastest_first,on,1,1.4,"{'1944': 16, 'ce9a': 84}","2 headless Chrome tabs (1 and 4 threads, one CPU); thread-aware finish_time"
+S6,sat_batch_100_mixed_40_80vars,fastest_first,on,2,1.4,"{'1944': 15, 'ce9a': 85}","2 headless Chrome tabs (1 and 4 threads, one CPU); thread-aware finish_time"
+S6,sat_batch_100_mixed_40_80vars,fastest_first,on,3,2.9,"{'1944': 20, 'ce9a': 80}","2 headless Chrome tabs (1 and 4 threads, one CPU); thread-aware finish_time"
+S6,sat_batch_100_mixed_40_80vars,fastest_first,on,4,1.6,"{'1944': 14, 'ce9a': 86}","2 headless Chrome tabs (1 and 4 threads, one CPU); thread-aware finish_time"
+S6,sat_batch_100_mixed_40_80vars,fastest_first,on,5,2.1,"{'1944': 19, 'ce9a': 81}","2 headless Chrome tabs (1 and 4 threads, one CPU); thread-aware finish_time"
+S6b,sat_batch_100_mixed_40_80vars,boinc,off,1,2.1,"{'ce9a': 61, '1944': 39}","2 headless Chrome tabs (1 and 4 threads, one CPU); thread-aware finish_time"
+S6b,sat_batch_100_mixed_40_80vars,boinc,off,2,2.6,"{'ce9a': 45, '1944': 55}","2 headless Chrome tabs (1 and 4 threads, one CPU); thread-aware finish_time"
+S6b,sat_batch_100_mixed_40_80vars,boinc,off,3,1.2,"{'ce9a': 86, '1944': 14}","2 headless Chrome tabs (1 and 4 threads, one CPU); thread-aware finish_time"
+S6b,sat_batch_100_mixed_40_80vars,boinc,off,4,1.9,"{'ce9a': 63, '1944': 37}","2 headless Chrome tabs (1 and 4 threads, one CPU); thread-aware finish_time"
+S6b,sat_batch_100_mixed_40_80vars,boinc,off,5,2.0,"{'ce9a': 51, '1944': 49}","2 headless Chrome tabs (1 and 4 threads, one CPU); thread-aware finish_time"
+S6b,sat_batch_100_mixed_40_80vars,boinc,off,6,3.1,"{'ce9a': 47, '1944': 53}","2 headless Chrome tabs (1 and 4 threads, one CPU); thread-aware finish_time"
+S6b,sat_batch_100_mixed_40_80vars,boinc,off,7,2.0,"{'ce9a': 71, '1944': 29}","2 headless Chrome tabs (1 and 4 threads, one CPU); thread-aware finish_time"
+S6b,sat_batch_100_mixed_40_80vars,boinc,off,8,2.3,"{'ce9a': 64, '1944': 36}","2 headless Chrome tabs (1 and 4 threads, one CPU); thread-aware finish_time"
+S6b,sat_batch_100_mixed_40_80vars,random,n/a,1,1.4,"{'1944': 20, 'ce9a': 80}","2 headless Chrome tabs (1 and 4 threads, one CPU); thread-aware finish_time"
+S6b,sat_batch_100_mixed_40_80vars,random,n/a,2,1.3,"{'ce9a': 83, '1944': 17}","2 headless Chrome tabs (1 and 4 threads, one CPU); thread-aware finish_time"
+S6b,sat_batch_100_mixed_40_80vars,random,n/a,3,1.6,"{'ce9a': 84, '1944': 16}","2 headless Chrome tabs (1 and 4 threads, one CPU); thread-aware finish_time"
+S6b,sat_batch_100_mixed_40_80vars,random,n/a,4,1.3,"{'ce9a': 83, '1944': 17}","2 headless Chrome tabs (1 and 4 threads, one CPU); thread-aware finish_time"
+S6b,sat_batch_100_mixed_40_80vars,random,n/a,5,1.6,"{'1944': 20, 'ce9a': 80}","2 headless Chrome tabs (1 and 4 threads, one CPU); thread-aware finish_time"
+S6b,sat_batch_100_mixed_40_80vars,random,n/a,6,1.3,"{'ce9a': 78, '1944': 22}","2 headless Chrome tabs (1 and 4 threads, one CPU); thread-aware finish_time"
+S6b,sat_batch_100_mixed_40_80vars,random,n/a,7,1.4,"{'ce9a': 84, '1944': 16}","2 headless Chrome tabs (1 and 4 threads, one CPU); thread-aware finish_time"
+S6b,sat_batch_100_mixed_40_80vars,random,n/a,8,1.5,"{'ce9a': 85, '1944': 15}","2 headless Chrome tabs (1 and 4 threads, one CPU); thread-aware finish_time"
+S7,sat_batch_100_mixed_60_85vars,random,n/a,1,5.1,"{'ce9a': 71, '1944': 29}","2 headless Chrome tabs (1 and 4 threads, one CPU); thread-aware finish_time"
+S7,sat_batch_100_mixed_60_85vars,random,n/a,2,6.7,"{'ce9a': 55, '1944': 45}","2 headless Chrome tabs (1 and 4 threads, one CPU); thread-aware finish_time"
+S7,sat_batch_100_mixed_60_85vars,random,n/a,3,3.4,"{'1944': 19, 'ce9a': 81}","2 headless Chrome tabs (1 and 4 threads, one CPU); thread-aware finish_time"
+S7,sat_batch_100_mixed_60_85vars,random,n/a,4,3.8,"{'1944': 28, 'ce9a': 72}","2 headless Chrome tabs (1 and 4 threads, one CPU); thread-aware finish_time"
+S7,sat_batch_100_mixed_60_85vars,random,n/a,5,4.0,"{'1944': 44, 'ce9a': 56}","2 headless Chrome tabs (1 and 4 threads, one CPU); thread-aware finish_time"
+S7,sat_batch_100_mixed_60_85vars,round_robin,n/a,1,8.4,"{'1944': 53, 'ce9a': 47}","2 headless Chrome tabs (1 and 4 threads, one CPU); thread-aware finish_time"
+S7,sat_batch_100_mixed_60_85vars,round_robin,n/a,2,4.7,"{'1944': 27, 'ce9a': 73}","2 headless Chrome tabs (1 and 4 threads, one CPU); thread-aware finish_time"
+S7,sat_batch_100_mixed_60_85vars,round_robin,n/a,3,5.6,"{'1944': 44, 'ce9a': 56}","2 headless Chrome tabs (1 and 4 threads, one CPU); thread-aware finish_time"
+S7,sat_batch_100_mixed_60_85vars,round_robin,n/a,4,7.6,"{'1944': 56, 'ce9a': 44}","2 headless Chrome tabs (1 and 4 threads, one CPU); thread-aware finish_time"
+S7,sat_batch_100_mixed_60_85vars,round_robin,n/a,5,4.1,"{'ce9a': 50, '1944': 50}","2 headless Chrome tabs (1 and 4 threads, one CPU); thread-aware finish_time"
+S7,sat_batch_100_mixed_60_85vars,boinc,on,1,7.1,"{'ce9a': 59, '1944': 41}","2 headless Chrome tabs (1 and 4 threads, one CPU); thread-aware finish_time"
+S7,sat_batch_100_mixed_60_85vars,boinc,on,2,3.7,"{'ce9a': 74, '1944': 26}","2 headless Chrome tabs (1 and 4 threads, one CPU); thread-aware finish_time"
+S7,sat_batch_100_mixed_60_85vars,boinc,on,3,8.0,"{'ce9a': 62, '1944': 38}","2 headless Chrome tabs (1 and 4 threads, one CPU); thread-aware finish_time"
+S7,sat_batch_100_mixed_60_85vars,boinc,on,4,3.1,"{'ce9a': 74, '1944': 26}","2 headless Chrome tabs (1 and 4 threads, one CPU); thread-aware finish_time"
+S7,sat_batch_100_mixed_60_85vars,boinc,on,5,9.8,"{'ce9a': 63, '1944': 37}","2 headless Chrome tabs (1 and 4 threads, one CPU); thread-aware finish_time"
+S7,sat_batch_100_mixed_60_85vars,boinc,off,1,3.2,"{'ce9a': 84, '1944': 16}","2 headless Chrome tabs (1 and 4 threads, one CPU); thread-aware finish_time"
+S7,sat_batch_100_mixed_60_85vars,boinc,off,2,8.7,"{'ce9a': 36, '1944': 64}","2 headless Chrome tabs (1 and 4 threads, one CPU); thread-aware finish_time"
+S7,sat_batch_100_mixed_60_85vars,boinc,off,3,5.4,"{'ce9a': 47, '1944': 53}","2 headless Chrome tabs (1 and 4 threads, one CPU); thread-aware finish_time"
+S7,sat_batch_100_mixed_60_85vars,boinc,off,4,8.8,"{'ce9a': 36, '1944': 64}","2 headless Chrome tabs (1 and 4 threads, one CPU); thread-aware finish_time"
+S7,sat_batch_100_mixed_60_85vars,boinc,off,5,4.5,"{'ce9a': 53, '1944': 47}","2 headless Chrome tabs (1 and 4 threads, one CPU); thread-aware finish_time"
+S7,sat_batch_100_mixed_60_85vars,ucb,on,1,8.8,"{'1944': 35, 'ce9a': 65}","2 headless Chrome tabs (1 and 4 threads, one CPU); thread-aware finish_time"
+S7,sat_batch_100_mixed_60_85vars,ucb,on,2,4.6,"{'1944': 21, 'ce9a': 79}","2 headless Chrome tabs (1 and 4 threads, one CPU); thread-aware finish_time"
+S7,sat_batch_100_mixed_60_85vars,ucb,on,3,3.5,"{'1944': 24, 'ce9a': 76}","2 headless Chrome tabs (1 and 4 threads, one CPU); thread-aware finish_time"
+S7,sat_batch_100_mixed_60_85vars,ucb,on,4,8.7,"{'1944': 26, 'ce9a': 74}","2 headless Chrome tabs (1 and 4 threads, one CPU); thread-aware finish_time"
+S7,sat_batch_100_mixed_60_85vars,ucb,on,5,3.4,"{'1944': 19, 'ce9a': 81}","2 headless Chrome tabs (1 and 4 threads, one CPU); thread-aware finish_time"
+S7,sat_batch_100_mixed_60_85vars,fastest_first,on,1,3.3,"{'ce9a': 82, '1944': 18}","2 headless Chrome tabs (1 and 4 threads, one CPU); thread-aware finish_time"
+S7,sat_batch_100_mixed_60_85vars,fastest_first,on,2,3.7,"{'1944': 28, 'ce9a': 72}","2 headless Chrome tabs (1 and 4 threads, one CPU); thread-aware finish_time"
+S7,sat_batch_100_mixed_60_85vars,fastest_first,on,3,10.1,"{'1944': 29, 'ce9a': 71}","2 headless Chrome tabs (1 and 4 threads, one CPU); thread-aware finish_time"
+S7,sat_batch_100_mixed_60_85vars,fastest_first,on,4,3.1,"{'1944': 18, 'ce9a': 82}","2 headless Chrome tabs (1 and 4 threads, one CPU); thread-aware finish_time"
+S7,sat_batch_100_mixed_60_85vars,fastest_first,on,5,4.2,"{'1944': 24, 'ce9a': 76}","2 headless Chrome tabs (1 and 4 threads, one CPU); thread-aware finish_time"
+c90b,sat_cubes_90vars_depth6,random,n/a,1,1.4,"{'ce9a': 51, '1944': 13}","2 headless Chrome tabs (1 and 4 threads, one CPU); Knuth pricing, 3 dives"
+c90b,sat_cubes_90vars_depth6,random,n/a,2,0.9,"{'ce9a': 48, '1944': 16}","2 headless Chrome tabs (1 and 4 threads, one CPU); Knuth pricing, 3 dives"
+c90b,sat_cubes_90vars_depth6,random,n/a,3,0.8,"{'ce9a': 59, '1944': 5}","2 headless Chrome tabs (1 and 4 threads, one CPU); Knuth pricing, 3 dives"
+c90b,sat_cubes_90vars_depth6,random,n/a,4,1.4,"{'ce9a': 50, '1944': 14}","2 headless Chrome tabs (1 and 4 threads, one CPU); Knuth pricing, 3 dives"
+c90b,sat_cubes_90vars_depth6,random,n/a,5,0.8,"{'ce9a': 50, '1944': 14}","2 headless Chrome tabs (1 and 4 threads, one CPU); Knuth pricing, 3 dives"
+c90b,sat_cubes_90vars_depth6,random,n/a,6,0.9,"{'ce9a': 50, '1944': 14}","2 headless Chrome tabs (1 and 4 threads, one CPU); Knuth pricing, 3 dives"
+c90b,sat_cubes_90vars_depth6,round_robin,n/a,1,1.4,"{'1944': 32, 'ce9a': 32}","2 headless Chrome tabs (1 and 4 threads, one CPU); Knuth pricing, 3 dives"
+c90b,sat_cubes_90vars_depth6,round_robin,n/a,2,0.9,"{'1944': 32, 'ce9a': 32}","2 headless Chrome tabs (1 and 4 threads, one CPU); Knuth pricing, 3 dives"
+c90b,sat_cubes_90vars_depth6,round_robin,n/a,3,0.8,"{'1944': 32, 'ce9a': 32}","2 headless Chrome tabs (1 and 4 threads, one CPU); Knuth pricing, 3 dives"
+c90b,sat_cubes_90vars_depth6,round_robin,n/a,4,1.4,"{'1944': 32, 'ce9a': 32}","2 headless Chrome tabs (1 and 4 threads, one CPU); Knuth pricing, 3 dives"
+c90b,sat_cubes_90vars_depth6,round_robin,n/a,5,0.8,"{'1944': 32, 'ce9a': 32}","2 headless Chrome tabs (1 and 4 threads, one CPU); Knuth pricing, 3 dives"
+c90b,sat_cubes_90vars_depth6,round_robin,n/a,6,0.9,"{'1944': 32, 'ce9a': 32}","2 headless Chrome tabs (1 and 4 threads, one CPU); Knuth pricing, 3 dives"
+c90b,sat_cubes_90vars_depth6,boinc,on,1,1.3,"{'ce9a': 56, '1944': 8}","2 headless Chrome tabs (1 and 4 threads, one CPU); Knuth pricing, 3 dives"
+c90b,sat_cubes_90vars_depth6,boinc,on,2,0.8,"{'1944': 24, 'ce9a': 40}","2 headless Chrome tabs (1 and 4 threads, one CPU); Knuth pricing, 3 dives"
+c90b,sat_cubes_90vars_depth6,boinc,on,3,0.9,"{'ce9a': 56, '1944': 8}","2 headless Chrome tabs (1 and 4 threads, one CPU); Knuth pricing, 3 dives"
+c90b,sat_cubes_90vars_depth6,boinc,on,4,1.3,"{'1944': 19, 'ce9a': 45}","2 headless Chrome tabs (1 and 4 threads, one CPU); Knuth pricing, 3 dives"
+c90b,sat_cubes_90vars_depth6,boinc,on,5,0.8,"{'1944': 24, 'ce9a': 40}","2 headless Chrome tabs (1 and 4 threads, one CPU); Knuth pricing, 3 dives"
+c90b,sat_cubes_90vars_depth6,boinc,on,6,0.9,"{'ce9a': 51, '1944': 13}","2 headless Chrome tabs (1 and 4 threads, one CPU); Knuth pricing, 3 dives"
+c90b,sat_cubes_90vars_depth6,fastest_first,on,1,1.4,"{'1944': 10, 'ce9a': 54}","2 headless Chrome tabs (1 and 4 threads, one CPU); Knuth pricing, 3 dives"
+c90b,sat_cubes_90vars_depth6,fastest_first,on,2,0.8,"{'1944': 6, 'ce9a': 58}","2 headless Chrome tabs (1 and 4 threads, one CPU); Knuth pricing, 3 dives"
+c90b,sat_cubes_90vars_depth6,fastest_first,on,3,0.9,"{'1944': 6, 'ce9a': 58}","2 headless Chrome tabs (1 and 4 threads, one CPU); Knuth pricing, 3 dives"
+c90b,sat_cubes_90vars_depth6,fastest_first,on,4,1.3,"{'1944': 7, 'ce9a': 57}","2 headless Chrome tabs (1 and 4 threads, one CPU); Knuth pricing, 3 dives"
+c90b,sat_cubes_90vars_depth6,fastest_first,on,5,0.8,"{'1944': 5, 'ce9a': 59}","2 headless Chrome tabs (1 and 4 threads, one CPU); Knuth pricing, 3 dives"
+c90b,sat_cubes_90vars_depth6,fastest_first,on,6,0.8,"{'ce9a': 37, '1944': 27}","2 headless Chrome tabs (1 and 4 threads, one CPU); Knuth pricing, 3 dives"
+P1,sat_batch_100_mixed_60_85vars,random,n/a,1,3.2,"{'ce9a': 77, 'e60e': 23}",4-thread headless Chrome tab plus a phone (worker e60e); phone about 5x slower per task
+P1,sat_batch_100_mixed_60_85vars,random,n/a,2,3.1,"{'e60e': 61, 'ce9a': 39}",4-thread headless Chrome tab plus a phone (worker e60e); phone about 5x slower per task
+P1,sat_batch_100_mixed_60_85vars,random,n/a,3,3.6,"{'e60e': 37, 'ce9a': 63}",4-thread headless Chrome tab plus a phone (worker e60e); phone about 5x slower per task
+P1,sat_batch_100_mixed_60_85vars,random,n/a,4,2.8,"{'ce9a': 72, 'e60e': 28}",4-thread headless Chrome tab plus a phone (worker e60e); phone about 5x slower per task
+P1,sat_batch_100_mixed_60_85vars,random,n/a,5,4.4,"{'ce9a': 43, 'e60e': 57}",4-thread headless Chrome tab plus a phone (worker e60e); phone about 5x slower per task
+P1,sat_batch_100_mixed_60_85vars,random,n/a,6,2.8,"{'e60e': 38, 'ce9a': 62}",4-thread headless Chrome tab plus a phone (worker e60e); phone about 5x slower per task
+P1,sat_batch_100_mixed_60_85vars,round_robin,n/a,1,2.6,"{'ce9a': 51, 'e60e': 49}",4-thread headless Chrome tab plus a phone (worker e60e); phone about 5x slower per task
+P1,sat_batch_100_mixed_60_85vars,round_robin,n/a,2,3.0,"{'ce9a': 40, 'e60e': 60}",4-thread headless Chrome tab plus a phone (worker e60e); phone about 5x slower per task
+P1,sat_batch_100_mixed_60_85vars,round_robin,n/a,3,4.4,"{'e60e': 72, 'ce9a': 28}",4-thread headless Chrome tab plus a phone (worker e60e); phone about 5x slower per task
+P1,sat_batch_100_mixed_60_85vars,round_robin,n/a,4,3.6,"{'ce9a': 79, 'e60e': 21}",4-thread headless Chrome tab plus a phone (worker e60e); phone about 5x slower per task
+P1,sat_batch_100_mixed_60_85vars,round_robin,n/a,5,3.7,"{'e60e': 50, 'ce9a': 50}",4-thread headless Chrome tab plus a phone (worker e60e); phone about 5x slower per task
+P1,sat_batch_100_mixed_60_85vars,round_robin,n/a,6,3.7,"{'e60e': 21, 'ce9a': 79}",4-thread headless Chrome tab plus a phone (worker e60e); phone about 5x slower per task
+P1,sat_batch_100_mixed_60_85vars,fastest_first,on,1,3.0,"{'ce9a': 67, 'e60e': 33}",4-thread headless Chrome tab plus a phone (worker e60e); phone about 5x slower per task
+P1,sat_batch_100_mixed_60_85vars,fastest_first,on,2,3.0,"{'ce9a': 46, 'e60e': 54}",4-thread headless Chrome tab plus a phone (worker e60e); phone about 5x slower per task
+P1,sat_batch_100_mixed_60_85vars,fastest_first,on,3,4.0,"{'e60e': 63, 'ce9a': 37}",4-thread headless Chrome tab plus a phone (worker e60e); phone about 5x slower per task
+P1,sat_batch_100_mixed_60_85vars,fastest_first,on,4,3.7,"{'ce9a': 70, 'e60e': 30}",4-thread headless Chrome tab plus a phone (worker e60e); phone about 5x slower per task
+P1,sat_batch_100_mixed_60_85vars,fastest_first,on,5,3.6,"{'e60e': 53, 'ce9a': 47}",4-thread headless Chrome tab plus a phone (worker e60e); phone about 5x slower per task
+P1,sat_batch_100_mixed_60_85vars,fastest_first,on,6,2.8,"{'ce9a': 52, 'e60e': 48}",4-thread headless Chrome tab plus a phone (worker e60e); phone about 5x slower per task
+P1,sat_batch_100_mixed_60_85vars,boinc,on,1,3.3,"{'e60e': 44, 'ce9a': 56}",4-thread headless Chrome tab plus a phone (worker e60e); phone about 5x slower per task
+P1,sat_batch_100_mixed_60_85vars,boinc,on,2,4.2,"{'ce9a': 45, 'e60e': 55}",4-thread headless Chrome tab plus a phone (worker e60e); phone about 5x slower per task
+P1,sat_batch_100_mixed_60_85vars,boinc,on,3,3.3,"{'e60e': 67, 'ce9a': 33}",4-thread headless Chrome tab plus a phone (worker e60e); phone about 5x slower per task
+P1,sat_batch_100_mixed_60_85vars,boinc,on,4,2.8,"{'ce9a': 30, 'e60e': 70}",4-thread headless Chrome tab plus a phone (worker e60e); phone about 5x slower per task
+P1,sat_batch_100_mixed_60_85vars,boinc,on,5,2.9,"{'ce9a': 32, 'e60e': 68}",4-thread headless Chrome tab plus a phone (worker e60e); phone about 5x slower per task
+P1,sat_batch_100_mixed_60_85vars,boinc,on,6,3.7,"{'ce9a': 25, 'e60e': 75}",4-thread headless Chrome tab plus a phone (worker e60e); phone about 5x slower per task
+P1,sat_batch_100_mixed_60_85vars,boinc,off,1,3.1,"{'ce9a': 26, 'e60e': 74}",4-thread headless Chrome tab plus a phone (worker e60e); phone about 5x slower per task
+P1,sat_batch_100_mixed_60_85vars,boinc,off,2,2.6,"{'e60e': 54, 'ce9a': 46}",4-thread headless Chrome tab plus a phone (worker e60e); phone about 5x slower per task
+P1,sat_batch_100_mixed_60_85vars,boinc,off,3,4.5,"{'ce9a': 21, 'e60e': 79}",4-thread headless Chrome tab plus a phone (worker e60e); phone about 5x slower per task
+P1,sat_batch_100_mixed_60_85vars,boinc,off,4,3.5,"{'e60e': 26, 'ce9a': 74}",4-thread headless Chrome tab plus a phone (worker e60e); phone about 5x slower per task
+P1,sat_batch_100_mixed_60_85vars,boinc,off,5,3.7,"{'e60e': 25, 'ce9a': 75}",4-thread headless Chrome tab plus a phone (worker e60e); phone about 5x slower per task
+P1,sat_batch_100_mixed_60_85vars,boinc,off,6,3.5,"{'e60e': 21, 'ce9a': 79}",4-thread headless Chrome tab plus a phone (worker e60e); phone about 5x slower per task
+P1,sat_batch_100_mixed_60_85vars,ucb,on,1,3.9,"{'e60e': 66, 'ce9a': 34}",4-thread headless Chrome tab plus a phone (worker e60e); phone about 5x slower per task
+P1,sat_batch_100_mixed_60_85vars,ucb,on,2,3.7,"{'ce9a': 66, 'e60e': 34}",4-thread headless Chrome tab plus a phone (worker e60e); phone about 5x slower per task
+P1,sat_batch_100_mixed_60_85vars,ucb,on,3,3.7,"{'e60e': 48, 'ce9a': 52}",4-thread headless Chrome tab plus a phone (worker e60e); phone about 5x slower per task
+P1,sat_batch_100_mixed_60_85vars,ucb,on,4,3.5,"{'ce9a': 66, 'e60e': 34}",4-thread headless Chrome tab plus a phone (worker e60e); phone about 5x slower per task
+P1,sat_batch_100_mixed_60_85vars,ucb,on,5,3.9,"{'e60e': 51, 'ce9a': 49}",4-thread headless Chrome tab plus a phone (worker e60e); phone about 5x slower per task
+P1,sat_batch_100_mixed_60_85vars,ucb,on,6,3.9,"{'e60e': 71, 'ce9a': 29}",4-thread headless Chrome tab plus a phone (worker e60e); phone about 5x slower per task
+P2,sat_cubes_90vars_depth6,random,n/a,1,1.0,"{'ce9a': 21, 'e60e': 43}",4-thread headless Chrome tab plus a phone (worker e60e)
+P2,sat_cubes_90vars_depth6,random,n/a,2,0.8,"{'ce9a': 22, 'e60e': 42}",4-thread headless Chrome tab plus a phone (worker e60e)
+P2,sat_cubes_90vars_depth6,random,n/a,3,0.7,"{'ce9a': 25, 'e60e': 39}",4-thread headless Chrome tab plus a phone (worker e60e)
+P2,sat_cubes_90vars_depth6,random,n/a,4,1.1,"{'ce9a': 21, 'e60e': 43}",4-thread headless Chrome tab plus a phone (worker e60e)
+P2,sat_cubes_90vars_depth6,random,n/a,5,0.7,"{'e60e': 40, 'ce9a': 24}",4-thread headless Chrome tab plus a phone (worker e60e)
+P2,sat_cubes_90vars_depth6,random,n/a,6,1.2,"{'ce9a': 21, 'e60e': 43}",4-thread headless Chrome tab plus a phone (worker e60e)
+P2,sat_cubes_90vars_depth6,fastest_first,on,1,0.7,"{'ce9a': 11, 'e60e': 53}",4-thread headless Chrome tab plus a phone (worker e60e)
+P2,sat_cubes_90vars_depth6,fastest_first,on,2,1.2,"{'ce9a': 24, 'e60e': 40}",4-thread headless Chrome tab plus a phone (worker e60e)
+P2,sat_cubes_90vars_depth6,fastest_first,on,3,0.9,"{'ce9a': 23, 'e60e': 41}",4-thread headless Chrome tab plus a phone (worker e60e)
+P2,sat_cubes_90vars_depth6,fastest_first,on,4,0.8,"{'ce9a': 24, 'e60e': 40}",4-thread headless Chrome tab plus a phone (worker e60e)
+P2,sat_cubes_90vars_depth6,fastest_first,on,5,1.2,"{'ce9a': 27, 'e60e': 37}",4-thread headless Chrome tab plus a phone (worker e60e)
+P2,sat_cubes_90vars_depth6,fastest_first,on,6,0.7,"{'ce9a': 25, 'e60e': 39}",4-thread headless Chrome tab plus a phone (worker e60e)
+P2,sat_cubes_90vars_depth6,boinc,on,1,1.2,"{'e60e': 34, 'ce9a': 30}",4-thread headless Chrome tab plus a phone (worker e60e)
+P2,sat_cubes_90vars_depth6,boinc,on,2,0.7,"{'e60e': 30, 'ce9a': 34}",4-thread headless Chrome tab plus a phone (worker e60e)
+P2,sat_cubes_90vars_depth6,boinc,on,3,1.1,"{'ce9a': 29, 'e60e': 35}",4-thread headless Chrome tab plus a phone (worker e60e)
+P2,sat_cubes_90vars_depth6,boinc,on,4,0.7,"{'e60e': 41, 'ce9a': 23}",4-thread headless Chrome tab plus a phone (worker e60e)
+P2,sat_cubes_90vars_depth6,boinc,on,5,1.2,"{'ce9a': 26, 'e60e': 38}",4-thread headless Chrome tab plus a phone (worker e60e)
+P2,sat_cubes_90vars_depth6,boinc,on,6,1.1,"{'ce9a': 32, 'e60e': 32}",4-thread headless Chrome tab plus a phone (worker e60e)

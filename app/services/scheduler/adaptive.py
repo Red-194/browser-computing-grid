@@ -38,6 +38,13 @@ STEAL_MIN_SAVING = 0.5
 AVOID_MAX_SLOWDOWN = 3.0
 
 
+def compute_threads(worker) -> int:
+    """How many tasks the worker runs at once. A tab reports its thread pool as
+    `cores`; a stand-in that runs its tasks one after another sets `threads=1`."""
+    threads = getattr(worker, "threads", None)
+    return max(1, threads or getattr(worker, "cores", 1) or 1)
+
+
 @dataclass
 class Candidate:
     """A worker with a free slot, and how much is already queued on it."""
@@ -47,15 +54,17 @@ class Candidate:
     running: int  # tasks it already holds
     extra: float = 0.0  # estimated seconds of work given to it in this pass
     assigned: int = 0  # tasks given to it in this pass
+    threads: int = 1  # compute threads: this many queued tasks run at once
 
     @property
     def uuid(self) -> str:
         return self.worker.uuid
 
     def finish_time(self, seconds: float) -> float:
-        """When a task of `seconds` would be done: everything queued before it,
-        then the task itself. Queued tasks are assumed to be about this size."""
-        return self.running * seconds + self.extra + seconds
+        """When a task of `seconds` would be done: everything queued before it
+        (shared out over the worker's threads), then the task itself. Queued tasks
+        are assumed to be about this size."""
+        return (self.running * seconds + self.extra) / self.threads + seconds
 
 
 class AdaptiveScheduler(Scheduler):
@@ -75,7 +84,9 @@ class AdaptiveScheduler(Scheduler):
         candidates = []
         for worker, free in open_workers(workers, worker_pcbs, self.tracker, now):
             pcb = worker_pcbs.get(worker.uuid) if worker_pcbs else None
-            candidates.append(Candidate(worker, free, len(pcb.running) if pcb else 0))
+            candidates.append(
+                Candidate(worker, free, len(pcb.running) if pcb else 0, threads=compute_threads(worker))
+            )
         if not candidates:
             return []
 
@@ -119,7 +130,7 @@ class AdaptiveScheduler(Scheduler):
             if pcb is None or not pcb.running:
                 # At most one copy per compute thread: a copy that has to queue
                 # behind other work saves nothing.
-                idle.append([worker, min(free, max(1, getattr(worker, "cores", 1) or 1))])
+                idle.append([worker, min(free, compute_threads(worker))])
         if not idle or not running:
             return []
 
@@ -194,7 +205,7 @@ class AdaptiveScheduler(Scheduler):
                 and worker.uuid not in free
                 and not self.tracker.is_quarantined(worker.uuid, now)
             ):
-                busy.append((worker, len(pcb.running)))
+                busy.append((worker, len(pcb.running) / compute_threads(worker)))
         return busy
 
     def should_avoid(self, task, cost, choice, estimates, workers, worker_pcbs, now) -> bool:
@@ -235,7 +246,7 @@ class AdaptiveScheduler(Scheduler):
             estimate = self.tracker.estimate(worker.uuid, task.workload, cost)
             if estimate is None or estimate.mean <= 0:
                 continue
-            wait_finish = (held + 1) * estimate.mean
+            wait_finish = (held + 1) * estimate.mean  # held: queue per thread
             if (
                 wait_finish < HOLD_RATIO * free_finish
                 and free_finish - wait_finish >= HOLD_MIN_SAVING

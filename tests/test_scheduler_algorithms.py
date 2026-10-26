@@ -21,7 +21,7 @@ def make_workers(**capacities):
     """Workers named by keyword, each with the given number of free slots."""
     workers, pcbs = [], {}
     for name, capacity in capacities.items():
-        workers.append(SimpleNamespace(uuid=name, cores=capacity, state=WorkerStates.IDLE))
+        workers.append(SimpleNamespace(uuid=name, cores=capacity, threads=1, state=WorkerStates.IDLE))
         pcbs[name] = WorkerPCB(name, capacity=capacity)
     return workers, pcbs
 
@@ -285,3 +285,20 @@ def test_an_unknown_startup_setting_falls_back_to_random(monkeypatch):
         assert registry.active().name == "random"
     finally:
         registry.set_active("random")
+
+
+@pytest.mark.parametrize("name", ADAPTIVE)
+def test_a_worker_with_more_threads_gets_more_of_the_work_at_the_same_speed(name):
+    # Same seconds per task on each, but one tab runs 4 tasks at once and the other 1.
+    tracker = SpeedTracker()
+    teach(tracker, "wide", 1.0)
+    teach(tracker, "narrow", 1.0)
+    workers = [
+        SimpleNamespace(uuid="wide", cores=4, state=WorkerStates.IDLE),
+        SimpleNamespace(uuid="narrow", cores=1, state=WorkerStates.IDLE),
+    ]
+    pcbs = {"wide": WorkerPCB("wide", capacity=20), "narrow": WorkerPCB("narrow", capacity=20)}
+
+    shares = count_by_worker(build(name, tracker).schedule(make_tasks(10), workers, pcbs))
+
+    assert shares["wide"] > 2 * shares.get("narrow", 0)
