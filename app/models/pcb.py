@@ -22,6 +22,7 @@ Every block can be turned into plain dicts with to_dict() and rebuilt with
 from_dict(). Times are time.monotonic() values: they only mean something to the
 process that made them, so a restored block should have its times reset.
 """
+import bisect
 import time
 from dataclasses import dataclass, field
 from enum import Enum
@@ -96,10 +97,25 @@ class TaskPCB:
     finished_at: float | None = None
     accepted_digest: str | None = None
     stale_results: list[StaleResult] = field(default_factory=list)
+    # Speculative copies running on other workers: attempt -> (worker, started).
+    # The first answer from the original or any copy wins.
+    backups: dict[int, tuple[str, float]] = field(default_factory=dict)
+    issued: int = 0  # highest attempt number handed out (copies included)
+    last_worker: str | None = None  # the worker it was last taken back from
+    # The job that owns this task, so it can keep its counts and waiting list
+    # up to date without rescanning every task (set by JobPCB).
+    _job: "JobPCB | None" = field(default=None, repr=False, compare=False)
 
     @property
     def key(self) -> TaskKey:
         return (self.job_id, self.task_id)
+
+    def _move_to(self, new: "TaskState") -> None:
+        """The only place a task's state changes."""
+        old = self.state
+        self.state = new
+        if self._job is not None and old != new:
+            self._job._moved(self.task_id, old, new)
 
     @property
     def is_final(self) -> bool:
@@ -109,11 +125,33 @@ class TaskPCB:
         """Hand the task to a worker. Returns the new attempt number, which the
         worker must send back with its result."""
         self._require(TaskState.WAITING, "assign")
-        self.state = TaskState.RUNNING
+        self._move_to(TaskState.RUNNING)
         self.worker_uuid = worker_uuid
         self.assigned_at = _now(now)
-        self.attempt += 1
+        self.issued = max(self.issued, self.attempt) + 1
+        self.attempt = self.issued
         return self.attempt
+
+    def assign_backup(self, worker_uuid: str, now: float | None = None) -> int:
+        """Also run this RUNNING task on another worker (work stealing).
+
+        The original keeps running; whichever answers first is accepted and the
+        other answer becomes a stale result. Returns the copy's attempt number.
+        """
+        self._require(TaskState.RUNNING, "assign a backup")
+        if worker_uuid == self.worker_uuid or any(w == worker_uuid for w, _ in self.backups.values()):
+            raise InvalidTransition(f"worker {worker_uuid} already runs task {self.key}")
+        self.issued = max(self.issued, self.attempt) + 1
+        self.backups[self.issued] = (worker_uuid, _now(now))
+        return self.issued
+
+    def holders(self) -> list[tuple[str, int]]:
+        """Every (worker, attempt) currently running this task."""
+        if self.state != TaskState.RUNNING or self.worker_uuid is None:
+            return []
+        return [(self.worker_uuid, self.attempt)] + [
+            (worker, attempt) for attempt, (worker, _) in self.backups.items()
+        ]
 
     def complete(
         self,
@@ -129,14 +167,24 @@ class TaskPCB:
         is STALE: not an error, just not the answer we are waiting for.
         `digest` is a fingerprint of the answer, made by the caller.
         """
-        current = (
-            self.state == TaskState.RUNNING
-            and attempt == self.attempt
-            and (worker_uuid is None or worker_uuid == self.worker_uuid)
+        is_backup = (
+            attempt in self.backups
+            and (worker_uuid is None or worker_uuid == self.backups[attempt][0])
+        )
+        current = self.state == TaskState.RUNNING and (
+            is_backup
+            or (
+                attempt == self.attempt
+                and (worker_uuid is None or worker_uuid == self.worker_uuid)
+            )
         )
 
         if current:
-            self.state = TaskState.DONE
+            self.backups = {}
+            self.attempt = attempt
+            if worker_uuid is not None:
+                self.worker_uuid = worker_uuid
+            self._move_to(TaskState.DONE)
             self.finished_at = _now(now)
             self.accepted_digest = digest
             return CompletionOutcome.ACCEPTED
@@ -176,22 +224,38 @@ class TaskPCB:
         returned. Without `attempt`, requeueing a task that is not RUNNING
         raises InvalidTransition.
         """
-        if attempt is not None and (
-            self.state != TaskState.RUNNING or attempt != self.attempt
-        ):
+        if attempt is not None and self.state != TaskState.RUNNING:
+            return None
+
+        if attempt is not None and attempt in self.backups:
+            # A speculative copy was lost: the original is still running.
+            del self.backups[attempt]
+            return TaskState.RUNNING
+
+        if attempt is not None and attempt != self.attempt:
             return None
 
         self._require(TaskState.RUNNING, "requeue")
+
+        if self.backups:
+            # The original was lost but a copy is still running: it takes over.
+            promoted = min(self.backups)
+            self.worker_uuid, self.assigned_at = self.backups.pop(promoted)
+            self.attempt = promoted
+            self.last_error = reason
+            return TaskState.RUNNING
+
         self.last_error = reason
+        self.last_worker = self.worker_uuid
         self.worker_uuid = None
         self.assigned_at = None
 
         if self.retries >= self.max_retries:
-            self.state = TaskState.FAILED
+            self._move_to(TaskState.FAILED)
             self.finished_at = _now(now)
         else:
             self.retries += 1
-            self.state = TaskState.WAITING
+            self._move_to(TaskState.WAITING)
 
         return self.state
 
@@ -202,7 +266,7 @@ class TaskPCB:
                 f"task {self.key} is already {self.state.value}, cannot fail"
             )
         self.last_error = reason
-        self.state = TaskState.FAILED
+        self._move_to(TaskState.FAILED)
         self.worker_uuid = None
         self.assigned_at = None
         self.finished_at = _now(now)
@@ -228,6 +292,9 @@ class TaskPCB:
             "finished_at": self.finished_at,
             "accepted_digest": self.accepted_digest,
             "stale_results": [s.to_dict() for s in self.stale_results],
+            "backups": {str(a): list(v) for a, v in self.backups.items()},
+            "issued": self.issued,
+            "last_worker": self.last_worker,
         }
 
     @classmethod
@@ -246,6 +313,9 @@ class TaskPCB:
             finished_at=data["finished_at"],
             accepted_digest=data["accepted_digest"],
             stale_results=[StaleResult.from_dict(s) for s in data["stale_results"]],
+            backups={int(a): tuple(v) for a, v in data.get("backups", {}).items()},
+            issued=data.get("issued", data["attempt"]),
+            last_worker=data.get("last_worker"),
         )
 
     def _require(self, expected: TaskState, action: str) -> None:
@@ -368,6 +438,27 @@ class JobPCB:
     workload: str
     tasks: dict[int, TaskPCB] = field(default_factory=dict)
 
+    def __post_init__(self):
+        # Kept up to date by TaskPCB._move_to, so these never need a full scan.
+        self._counts = {state: 0 for state in TaskState}
+        self._waiting: list[int] = []  # task ids, sorted
+        for task_id in sorted(self.tasks):
+            task = self.tasks[task_id]
+            task._job = self
+            self._counts[task.state] += 1
+            if task.state == TaskState.WAITING:
+                self._waiting.append(task_id)
+
+    def _moved(self, task_id: int, old: TaskState, new: TaskState) -> None:
+        self._counts[old] -= 1
+        self._counts[new] += 1
+        if old == TaskState.WAITING:
+            index = bisect.bisect_left(self._waiting, task_id)
+            if index < len(self._waiting) and self._waiting[index] == task_id:
+                del self._waiting[index]
+        if new == TaskState.WAITING:
+            bisect.insort(self._waiting, task_id)
+
     @classmethod
     def create(
         cls,
@@ -388,15 +479,17 @@ class JobPCB:
     def task(self, task_id: int) -> TaskPCB:
         return self.tasks[task_id]
 
-    def waiting(self) -> list[TaskPCB]:
-        """Tasks ready to be given to a worker, lowest task id first."""
-        return sorted(
-            (t for t in self.tasks.values() if t.state == TaskState.WAITING),
-            key=lambda t: t.task_id,
-        )
+    def waiting(self, limit: int | None = None) -> list[TaskPCB]:
+        """Tasks ready to be given to a worker, lowest task id first. With
+        `limit`, only the first `limit` of them."""
+        ids = self._waiting if limit is None else self._waiting[:limit]
+        return [self.tasks[task_id] for task_id in ids]
+
+    def has_waiting(self) -> bool:
+        return bool(self._waiting)
 
     def count(self, state: TaskState) -> int:
-        return sum(1 for t in self.tasks.values() if t.state == state)
+        return self._counts[state]
 
     def failed_tasks(self) -> list[TaskPCB]:
         return [t for t in self.tasks.values() if t.state == TaskState.FAILED]
@@ -405,9 +498,9 @@ class JobPCB:
     def status(self) -> JobStatus:
         """FAILED as soon as any task has failed, since the job can no longer
         be completed; DONE when every task is done; otherwise RUNNING."""
-        if self.failed_tasks():
+        if self._counts[TaskState.FAILED]:
             return JobStatus.FAILED
-        if self.tasks and self.count(TaskState.DONE) == len(self.tasks):
+        if self.tasks and self._counts[TaskState.DONE] == len(self.tasks):
             return JobStatus.DONE
         return JobStatus.RUNNING
 

@@ -2,6 +2,8 @@ import asyncio
 from types import SimpleNamespace
 from uuid import uuid4
 
+from app.services.scheduler.capacity import CapacityPolicy
+from app.services.scheduler.stats import SpeedTracker
 from app import jobs
 from app.models.pcb import JobPCB, TaskState, WorkerPCB
 from app.models.worker import WorkerStates
@@ -35,6 +37,8 @@ def setup_execution(monkeypatch, capacity=1):
         return True
 
     monkeypatch.setattr(jobs, "send_task", fake_send)
+    # A fresh tracker, so speeds other tests taught the shared one cannot change the slots.
+    monkeypatch.setattr(jobs, "capacity_policy", CapacityPolicy(SpeedTracker()))
     jobs.workers.clear()
     jobs.worker_pcbs.clear()
     jobs.job_pcbs.clear()

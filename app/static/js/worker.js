@@ -11,76 +11,182 @@ let heartbeatTimer = null;
 let socket = null;
 let allowReconnect = true; // the controller can turn this off (POST /disconnect/{uuid})
 
-const computeWorker = new Worker(
-    "/static/js/compute-worker.js",
-    { type: "module" }
+/*
+ * Compute worker pool
+ *
+ * One compute worker is one WASM thread, so a tab with several cores needs
+ * several of them to use those cores. Tasks wait in `taskQueue` here and go to
+ * whichever compute worker is free. The size defaults to cores - 1 (the main
+ * thread keeps the WebSocket and heartbeat alive), at most MAX_THREADS, and can
+ * be set with ?threads=N in the page address.
+ */
+const MAX_THREADS = 8;
+const requestedThreads = parseInt(
+    new URLSearchParams(window.location.search).get("threads"), 10
 );
+const poolSize = Math.max(1, Math.min(
+    requestedThreads > 0 ? requestedThreads : (cores || 1) - 1,
+    MAX_THREADS
+));
 
-document.getElementById("cores").textContent = cores;
+const pool = [];
+const taskQueue = [];
+
+/*
+ * Results are sent in batches: finished results wait up to RESULT_FLUSH_MS and
+ * go out in one message. For tiny tasks this replaces thousands of messages with
+ * a few hundred; for long tasks the delay is not noticeable.
+ */
+const RESULT_FLUSH_MS = 10;
+const resultBuffer = [];
+let flushTimer = null;
+
+function flushResults() {
+
+    flushTimer = null;
+
+    if (resultBuffer.length === 0) {
+        return;
+    }
+
+    const results = resultBuffer.splice(0, resultBuffer.length);
+
+    if (socket?.readyState === WebSocket.OPEN) {
+
+        socket.send(JSON.stringify({
+            type: "task_results",
+            results
+        }));
+
+    }
+
+}
+
+document.getElementById("cores").textContent =
+    `${cores} (${poolSize} compute thread${poolSize === 1 ? "" : "s"})`;
 document.getElementById("memory").textContent = memory + " GB";
 document.getElementById("uuid").textContent = workerUUID;
 
 
-/*
- * Compute worker → main worker
- *
- * The compute worker performs the synchronous WASM execution.
- * This thread remains responsible for WebSocket communication
- * and heartbeat handling.
- */
-computeWorker.onmessage = (event) => {
+function startComputeWorker() {
 
-    const message = event.data;
+    const entry = {
+        worker: new Worker(
+            "/static/js/compute-worker.js",
+            { type: "module" }
+        ),
+        ready: false,
+        busy: false
+    };
 
-    if (message.type === "ready") {
+    /*
+     * Compute worker → main thread
+     *
+     * The compute worker performs the synchronous WASM execution.
+     * This thread remains responsible for WebSocket communication
+     * and heartbeat handling.
+     */
+    entry.worker.onmessage = (event) => {
 
-        console.log("Compute worker ready.");
-        return;
-    }
+        const message = event.data;
 
-    if (message.type === "result") {
+        if (message.type === "ready") {
 
-        const task = message.task;
-        const result = message.result;
+            entry.ready = true;
+            pump();
+            return;
+        }
 
-        console.log("Task result:", result);
+        if (message.type === "result") {
 
-        if (socket?.readyState === WebSocket.OPEN) {
+            const task = message.task;
 
-            socket.send(JSON.stringify({
-                type: "task_result",
+            entry.busy = false;
+
+            resultBuffer.push({
                 job_id: task.job_id,
                 task_id: task.task_id,
                 attempt: task.attempt,
-                result,
+                result: message.result,
                 execution_time_ms: message.execution_time_ms
-            }));
+            });
+
+            if (flushTimer === null) {
+                flushTimer = setTimeout(flushResults, RESULT_FLUSH_MS);
+            }
+
+            pump();
+            return;
+        }
+
+        if (message.type === "error") {
+
+            console.error(
+                `Task ${message.task_id} failed:`,
+                message.error
+            );
+
+            entry.busy = false;
+
+            // Tell the controller, or it waits for a timeout to notice.
+            if (message.task && socket?.readyState === WebSocket.OPEN) {
+
+                socket.send(JSON.stringify({
+                    type: "task_error",
+                    job_id: message.task.job_id,
+                    task_id: message.task.task_id,
+                    attempt: message.task.attempt,
+                    error: message.error
+                }));
+
+            }
+
+            pump();
+            return;
+        }
+
+        if (message.type === "init_error") {
+
+            console.error(
+                "WASM runtime initialization failed:",
+                message.error
+            );
 
         }
 
-        return;
+    };
+
+    pool.push(entry);
+}
+
+
+/* Hand waiting tasks to every compute worker that is free. */
+function pump() {
+
+    for (const entry of pool) {
+
+        if (taskQueue.length === 0) {
+            return;
+        }
+
+        if (entry.ready && !entry.busy) {
+
+            entry.busy = true;
+            entry.worker.postMessage({
+                type: "execute",
+                task: taskQueue.shift()
+            });
+
+        }
+
     }
 
-    if (message.type === "error") {
+}
 
-        console.error(
-            `Task ${message.task_id} failed:`,
-            message.error
-        );
 
-        return;
-    }
-
-    if (message.type === "init_error") {
-
-        console.error(
-            "WASM runtime initialization failed:",
-            message.error
-        );
-
-    }
-
-};
+for (let i = 0; i < poolSize; i++) {
+    startComputeWorker();
+}
 
 
 /*
@@ -102,7 +208,7 @@ function connect() {
 
             type: "register",
             uuid: workerUUID,
-            cores,
+            cores: poolSize, // what this tab can run at once (see the pool above)
             memory,
             os,
             browser
@@ -144,22 +250,22 @@ function connect() {
 
         else if (message.type === "task") {
 
-            console.log(
-                "Task received:",
-                message.task
-            );
-
             /*
              * Do NOT execute WASM here.
              *
-             * Send the task to the dedicated compute worker.
+             * Queue the task for the compute worker pool.
              */
-            computeWorker.postMessage({
+            taskQueue.push(message.task);
+            pump();
 
-                type: "execute",
-                task: message.task
+        }
 
-            });
+        else if (message.type === "tasks") {
+
+            for (const task of message.tasks) {
+                taskQueue.push(task);
+            }
+            pump();
 
         }
 
@@ -169,6 +275,11 @@ function connect() {
     socket.onclose = () => {
 
         clearInterval(heartbeatTimer);
+
+        // Tasks still waiting here belonged to the old session; the controller
+        // has already taken them back.
+        taskQueue.length = 0;
+        resultBuffer.length = 0;
 
         if (!allowReconnect) {
 

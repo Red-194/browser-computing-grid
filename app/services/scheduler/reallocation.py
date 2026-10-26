@@ -16,6 +16,7 @@ simulator can run the exact same logic with a virtual clock.
 """
 import asyncio
 import logging
+import time
 
 from ...models.pcb import JobStatus, TaskState
 from . import stats
@@ -68,7 +69,7 @@ def find_timed_out(job_pcbs, worker_pcbs, costs_of, tracker, now=None):
     return late
 
 
-def take_back(task_pcb, worker_pcbs, tracker, now=None) -> bool:
+def take_back(task_pcb, worker_pcbs, tracker, now=None, cost=1.0) -> bool:
     """Requeue one timed-out task and free the worker's slot for it.
 
     The slot is freed at once (the worker may still answer; that answer will be
@@ -78,6 +79,9 @@ def take_back(task_pcb, worker_pcbs, tracker, now=None) -> bool:
     """
     worker_uuid = task_pcb.worker_uuid
     attempt = task_pcb.attempt
+    waited = None if task_pcb.assigned_at is None else (
+        (time.monotonic() if now is None else now) - task_pcb.assigned_at
+    )
     state = task_pcb.requeue(
         f"timed out on worker {worker_uuid}", now=now, attempt=attempt
     )
@@ -88,6 +92,7 @@ def take_back(task_pcb, worker_pcbs, tracker, now=None) -> bool:
     if worker_pcb is not None:
         worker_pcb.release(task_pcb.key, completed=False)
     tracker.record_timeout(worker_uuid, now)
+    tracker.record_lower_bound(worker_uuid, task_pcb.workload, cost, waited)
     return True
 
 
@@ -112,7 +117,7 @@ class TimeoutMonitor:
         taken = 0
         for task_pcb in late:
             worker_uuid = task_pcb.worker_uuid
-            if take_back(task_pcb, worker_pcbs, stats.tracker, now):
+            if take_back(task_pcb, worker_pcbs, stats.tracker, now, cost_of_task(task_pcb)):
                 taken += 1
                 jobs.sync_worker_state(worker_uuid)
                 logger.warning(
@@ -123,6 +128,7 @@ class TimeoutMonitor:
                 )
         if taken:
             await jobs.dispatch_pending()
+        await jobs.speculate_pending()
         return taken
 
     async def run(self) -> None:

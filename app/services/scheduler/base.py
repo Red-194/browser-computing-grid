@@ -26,6 +26,15 @@ class Scheduler:
         """
         raise NotImplementedError
 
+    # Work stealing is off unless an algorithm turns it on, so the baselines
+    # stay plain.
+    speculative = False
+
+    def speculate(self, running, workers, worker_pcbs=None, costs=None, now=None):
+        """Return (TaskPCB, worker) pairs: running tasks worth also running on
+        an idle worker. `running` holds RUNNING TaskPCBs that have no copy yet."""
+        return []
+
 
 def free_slots(worker, pcb) -> int:
     """How many more tasks this worker can take right now."""

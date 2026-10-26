@@ -33,6 +33,36 @@ async def send_json(websocket, payload) -> None:
         await websocket.send_json(payload)
 
 
+async def send_tasks(worker, items):
+    """Send several tasks to a worker in one message.
+
+    items: list of (task, attempt). Returns False if the connection is unusable.
+    The tab handles each task exactly as if it had arrived on its own.
+    """
+    if worker.websocket is None:
+        return False
+
+    try:
+        tasks = []
+        for task, attempt in items:
+            payload = task.model_dump(mode="json")
+            if attempt is not None:
+                payload["attempt"] = attempt
+            tasks.append(payload)
+        await send_json(worker.websocket, {"type": "tasks", "tasks": tasks})
+        return True
+
+    except Exception as e:
+        logger.error(
+            "Failed to send %d tasks to worker %s: %s %r",
+            len(items),
+            worker.uuid,
+            type(e).__name__,
+            e,
+        )
+        return False
+
+
 async def send_task(worker, task, attempt: int | None = None):
     if worker.websocket is None:
         return False
@@ -234,7 +264,33 @@ async def websocket_endpoint(websocket: WebSocket):
                     raw.get("execution_time_ms"),
                 )
 
+            elif msg_type == "task_results":
 
+                from .jobs import dispatch_pending, handle_task_result
+                for item in raw["results"]:
+                    await handle_task_result(
+                        worker_uuid,
+                        UUID(str(item["job_id"])),
+                        item["task_id"],
+                        item["result"],
+                        item.get("attempt"),
+                        item.get("execution_time_ms"),
+                        dispatch=False,
+                    )
+                # One dispatch for the whole batch, which also sends the
+                # replacement tasks to this worker together.
+                await dispatch_pending()
+
+            elif msg_type == "task_error":
+
+                from .jobs import handle_task_error
+                await handle_task_error(
+                    worker_uuid,
+                    UUID(str(raw["job_id"])),
+                    raw["task_id"],
+                    raw.get("attempt"),
+                    str(raw.get("error", "task failed")),
+                )
 
     except WebSocketDisconnect:
 

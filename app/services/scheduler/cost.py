@@ -4,10 +4,11 @@ The scheduler measures speed as "seconds per unit of work" so one worker's
 speed on small tasks can be used to guess its time on big ones. The unit is
 whatever is natural for the workload and only has to be consistent within it.
 
-Where the size of a task cannot be known before running it (N-Queens, SAT),
+Where the size of a task cannot be known before running it (SAT),
 the cost is 1, so the speed estimate becomes "seconds per task" and the spread
 of the samples carries the uncertainty.
 """
+import math
 
 
 def _compression(config) -> float:
@@ -22,6 +23,15 @@ def _mandelbrot(config) -> float:
     return config.tile_size * config.tile_size * config.max_iterations
 
 
+def _nqueens(config) -> float:
+    """Search nodes under the fixed prefix, from a curve fitted to measured counts
+    (about 490 nodes with 8 rows left, 5 million with 14, 68 million with 15).
+    Right to within a factor of two or so, which is enough: what matters is that a
+    task with the whole board left costs thousands of times a nearly finished one."""
+    rows_left = max(0, config.n - len(config.prefix))
+    return math.exp(0.341 * rows_left + 0.0542 * rows_left * rows_left)
+
+
 def _unknown(config) -> float:
     return 1.0
 
@@ -30,7 +40,7 @@ _ESTIMATORS = {
     "compression": _compression,
     "regex": _regex,
     "mandelbrot": _mandelbrot,
-    "nqueens": _unknown,
+    "nqueens": _nqueens,
     "sat": _unknown,
 }
 

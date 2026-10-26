@@ -124,7 +124,46 @@ Worker behavior: immediately replies with `pong`, echoing the same `timestamp`. 
 
 Sent by `send_task()` (`websocket.py`) to a single assigned worker when a job is submitted (§4). Worker behavior: calls `execute_task(task.workload, task.config)` in the WASM runtime and replies with `task_result`. A send failure is caught and logged server-side; it does not raise or retry.
 
+**`tasks`**
+
+| Field | Type | Description |
+|---|---|---|
+| `type` | `Literal["tasks"]` | discriminator |
+| `tasks` | list of objects | serialized tasks as in `task`, each with its own `attempt` |
+
+Sent by `send_tasks()` when several tasks are claimed for one worker in the same dispatch; a single task still uses `task`. The worker queues every task and handles each exactly as if it had arrived alone. Attempt numbers are per task.
+
+**`disconnect`**
+
+| Field | Type | Description |
+|---|---|---|
+| `type` | `Literal["disconnect"]` | discriminator |
+| `reconnect` | `bool` | `false`: do not reconnect after the socket closes (the tab shows "Disconnected by controller") |
+
+Sent by `POST /disconnect/{worker_uuid}` just before the socket is closed. Without it the tab reconnects by itself after 3 s.
+
 ### 2.4 Messages: Worker → Controller (continued)
+
+**`task_results`**
+
+| Field | Type | Description |
+|---|---|---|
+| `type` | `Literal["task_results"]` | discriminator |
+| `results` | list of objects | each has the fields of `task_result` below plus `attempt` |
+
+The tab collects finished results for up to 10 ms and sends them together. The controller handles each result as if it had arrived alone, then runs one dispatch for the whole batch (which also sends the replacement tasks together).
+
+**`task_error`**
+
+| Field | Type | Description |
+|---|---|---|
+| `type` | `Literal["task_error"]` | discriminator |
+| `job_id` | `str` | the task's job |
+| `task_id` | `int` | the task |
+| `attempt` | `int` | the attempt that failed |
+| `error` | `str` | the message from the browser |
+
+Sent when executing a task throws. The controller requeues that attempt at once (it counts as a retry, so a task that always fails ends FAILED and so does its job) and frees the worker's slot. An error for an attempt that is no longer current is ignored.
 
 **`task_result`**
 
@@ -133,6 +172,7 @@ Sent by `send_task()` (`websocket.py`) to a single assigned worker when a job is
 | `type` | `Literal["task_result"]` | discriminator |
 | `job_id` | `str` | the task's `job_id`, used to look up the job's aggregator |
 | `task_id` | `int` | the task's `task_id` |
+| `attempt` | `int` | the attempt number the task arrived with; only the current attempt (the original or a work-stealing copy) is accepted |
 | `result` | object | `{ row_block, col_block, pixel_buffer }`, taken directly from the WASM kernel's output |
 | `execution_time_ms` | `float` | wall-clock time for `execute_task()`, measured client-side |
 
@@ -208,7 +248,7 @@ Behavior depends on the worker's current state:
 | Worker state | Action | Response |
 |---|---|---|
 | Not found | none | `{ "success": false }` |
-| Online (`websocket` set) | closes the socket — this triggers the `WebSocketDisconnect` path in §2.5, transitioning the worker to `Offline` (record kept) | `{ "success": true }` |
+| Online (`websocket` set) | sends `disconnect` (see §2.3) with `reconnect` from the query parameter (default `false`), then closes the socket — this triggers the `WebSocketDisconnect` path in §2.5, transitioning the worker to `Offline` (record kept) | `{ "success": true }` |
 | Offline (`websocket is None`) | removes the worker record from the registry entirely and notifies dashboards directly | `{ "success": true }` |
 
 So a worker takes two explicit clicks to fully clear from the dashboard once it's gone: one to disconnect it, one to remove the resulting offline row. This matches the `Disconnect`/`Remove` label toggle in `dashboard.js`.

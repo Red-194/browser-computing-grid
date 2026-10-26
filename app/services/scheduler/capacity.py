@@ -13,6 +13,8 @@ from . import stats
 TARGET_QUEUE_SECONDS = 2.0
 # Used until we have measured this worker (and capped by its cores).
 DEFAULT_SLOTS = 2
+# Most tasks held per compute thread, running or queued (see slots_for_pool).
+MAX_PER_THREAD = 64
 
 
 class CapacityPolicy:
@@ -37,6 +39,29 @@ class CapacityPolicy:
     def apply(self, worker, worker_pcb, workload: str, cost: float) -> int:
         """Set the worker record's capacity and return it."""
         worker_pcb.capacity = self.slots_for(
+            worker.uuid, getattr(worker, "cores", 1) or 1, workload, cost
+        )
+        return worker_pcb.capacity
+
+    # --- tabs with several compute threads --------------------------------
+
+    def slots_for_pool(self, worker_uuid: str, threads: int, workload: str, cost: float) -> int:
+        """Slots for a worker whose `threads` compute threads run tasks in parallel.
+
+        Each thread gets `slots_for` as if it were a one-thread worker: one task
+        until the worker has been measured (so a new tab does not grab a whole
+        small job), then enough to cover about TARGET_QUEUE_SECONDS, at most
+        MAX_PER_THREAD.
+        """
+        estimate = self.tracker.estimate(worker_uuid, workload, cost)
+        if estimate is None or estimate.mean <= 0:
+            per_thread = 1
+        else:
+            per_thread = max(1, min(MAX_PER_THREAD, math.ceil(self.target_seconds / estimate.mean)))
+        return max(1, threads) * per_thread
+
+    def apply_pool(self, worker, worker_pcb, workload: str, cost: float) -> int:
+        worker_pcb.capacity = self.slots_for_pool(
             worker.uuid, getattr(worker, "cores", 1) or 1, workload, cost
         )
         return worker_pcb.capacity

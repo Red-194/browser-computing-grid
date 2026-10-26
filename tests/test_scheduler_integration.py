@@ -103,9 +103,9 @@ def test_dispatch_uses_the_active_scheduler_and_the_measured_speeds(monkeypatch)
 
     per_worker = {w: sum(1 for who, _, _ in sent if who == w) for w in ("fast", "slow")}
     assert per_worker["fast"] > per_worker["slow"]
-    # The slow worker's queue was cut to cover about two seconds: one task.
-    assert jobs.worker_pcbs["slow"].capacity == 1
-    assert jobs.worker_pcbs["fast"].capacity == 4  # fast tasks fill its cores
+    # Each of a worker's 4 threads holds one slow task, but up to 4 fast ones.
+    assert jobs.worker_pcbs["slow"].capacity == 4
+    assert jobs.worker_pcbs["fast"].capacity == 4 * 20  # 2 s of 0.1 s tasks per thread
 
 
 def test_switching_scheduler_changes_how_the_next_job_is_spread(monkeypatch):

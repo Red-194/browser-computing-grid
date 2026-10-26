@@ -12,6 +12,8 @@ out in this pass so one fast worker is not handed everything.
 """
 from dataclasses import dataclass
 
+import time
+
 from . import stats
 from .base import Scheduler, open_workers
 
@@ -25,6 +27,11 @@ HOLD_RATIO = 0.7
 # milliseconds the round trip to a worker (not in our estimates) costs more than
 # the wait would save, so holding back would only slow the job down.
 HOLD_MIN_SAVING = 1.0
+# Work stealing: an idle worker copies a running task only if it expects to
+# finish it in under this fraction of the time the holder still needs, and
+# saves at least this many seconds. Copies cost compute, so the bar is high.
+STEAL_RATIO = 0.7
+STEAL_MIN_SAVING = 0.5
 
 
 @dataclass
@@ -49,6 +56,7 @@ class Candidate:
 
 class AdaptiveScheduler(Scheduler):
     name = "adaptive"
+    speculative = True
 
     def __init__(self, tracker: stats.SpeedTracker | None = None):
         self.tracker = tracker or stats.tracker
@@ -80,11 +88,76 @@ class AdaptiveScheduler(Scheduler):
             estimates = {c.uuid: self.estimate(c, task, cost) for c in open_candidates}
             guess = self.guess(estimates)
             choice = self.pick(task, cost, open_candidates, estimates, guess)
+            if self.should_avoid(task, choice, workers, worker_pcbs, now):
+                continue  # it was just taken back from this worker; wait for another
             if self.better_to_wait(task, cost, choice, estimates, guess, busy):
                 continue  # leave it waiting; a smaller task may suit this worker
             self.give(choice, task, estimates[choice.uuid], guess, assignments)
 
         return assignments
+
+    # ------------------------------------------------ work stealing
+
+    def speculate(self, running, workers, worker_pcbs=None, costs=None, now=None):
+        """Tail-of-job work stealing.
+
+        When nothing is waiting and a worker has gone idle, a task still running
+        elsewhere may be worth running a second time here: the first answer wins.
+        This catches a straggler (a slow or stuck worker, or one uneven task
+        that is far bigger than its siblings) without waiting for a timeout.
+        Only fully idle workers steal, and only from other workers.
+        """
+        costs = costs or {}
+        clock = time.monotonic() if now is None else now
+        idle = []
+        for worker, free in open_workers(workers, worker_pcbs, self.tracker, now):
+            pcb = worker_pcbs.get(worker.uuid) if worker_pcbs else None
+            if pcb is None or not pcb.running:
+                # At most one copy per compute thread: a copy that has to queue
+                # behind other work saves nothing.
+                idle.append([worker, min(free, max(1, getattr(worker, "cores", 1) or 1))])
+        if not idle or not running:
+            return []
+
+        def held(task):
+            pcb = worker_pcbs.get(task.worker_uuid) if worker_pcbs else None
+            return len(pcb.running) if pcb else 1
+
+        def remaining(task):
+            """Seconds the holder still needs; None if we cannot tell."""
+            estimate = self.tracker.estimate(task.worker_uuid, task.workload, costs.get(task.key, 1.0))
+            if estimate is None or estimate.mean <= 0 or task.assigned_at is None:
+                return None, None
+            elapsed = clock - task.assigned_at
+            # On average a task sits in the middle of its holder's queue.
+            expected = (held(task) + 1) / 2 * estimate.mean
+            # Already overdue: it may take as long again.
+            return (expected - elapsed if elapsed < expected else elapsed), estimate.mean
+
+        steals = []
+        candidates = []
+        for task in running:
+            left, mean = remaining(task)
+            if left is not None:
+                candidates.append((left, mean, task))
+        for left, mean, task in sorted(candidates, key=lambda c: -c[0]):
+            cost = costs.get(task.key, 1.0)
+            best = None
+            for entry in idle:
+                worker, free = entry
+                if free <= 0 or worker.uuid == task.worker_uuid:
+                    continue
+                estimate = self.tracker.estimate(worker.uuid, task.workload, cost)
+                seconds = estimate.mean if estimate is not None and estimate.mean > 0 else mean
+                if best is None or seconds < best[0]:
+                    best = (seconds, entry)
+            if best is None:
+                continue
+            seconds, entry = best
+            if seconds < STEAL_RATIO * left and left - seconds >= STEAL_MIN_SAVING:
+                entry[1] -= 1
+                steals.append((task, entry[0]))
+        return steals
 
     # ------------------------------------------------ hooks to override
 
@@ -119,6 +192,23 @@ class AdaptiveScheduler(Scheduler):
             ):
                 busy.append((worker, len(pcb.running)))
         return busy
+
+    def should_avoid(self, task, choice, workers, worker_pcbs, now) -> bool:
+        """True if this task was just taken back from the chosen worker and some
+        other usable worker exists (even if busy right now).
+
+        Without this a task that timed out on a slow worker goes straight back to
+        it whenever that is the only worker with a free slot, and times out again.
+        """
+        if getattr(task, "last_worker", None) != choice.uuid:
+            return False
+        for worker in workers:
+            if worker.uuid == choice.uuid or self.tracker.is_quarantined(worker.uuid, now):
+                continue
+            pcb = worker_pcbs.get(worker.uuid) if worker_pcbs else None
+            if pcb is None or pcb.is_online:
+                return True
+        return False
 
     def better_to_wait(self, task, cost, choice, estimates, guess, busy) -> bool:
         """True if a busy worker would finish this task clearly sooner than the

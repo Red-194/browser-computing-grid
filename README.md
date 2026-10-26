@@ -78,11 +78,12 @@ Tasks are handed out as workers have free slots, and a scheduler decides which t
 | `boinc` | Adaptive, in the style of BOINC: biggest tasks first to the fastest workers, retried tasks only to reliable workers |
 | `ucb` | `fastest_first` plus a bonus for workers it has little data on |
 
-The adaptive ones learn each worker's speed per workload from the time every result reports, size each worker's queue from that speed, and leave out a worker that keeps timing out. A background monitor also takes tasks back from a worker that stays connected but stops answering. Choose the algorithm at start-up with the `GRID_SCHEDULER` environment variable (for example `GRID_SCHEDULER=boinc`), or switch it while the server runs:
+The adaptive ones learn each worker's speed per workload from the time every result reports, size each worker's queue from that speed, and leave out a worker that keeps timing out. A background monitor also takes tasks back from a worker that stays connected but stops answering, and a task taken back waits for a different worker instead of returning to the one it left. **Work stealing:** near the end of a job, a worker that has gone idle also runs a task that is still running elsewhere, and the first answer wins (it is on for `fastest_first`, `boinc` and `ucb`, off for the two baselines). Choose the algorithm at start-up with the `GRID_SCHEDULER` environment variable (for example `GRID_SCHEDULER=boinc`), or switch it while the server runs:
 
 ```bash
 curl http://127.0.0.1:8000/scheduler                       # active and available
 curl -X PUT http://127.0.0.1:8000/scheduler -H "Content-Type: application/json" -d '{"name": "boinc"}'
+curl -X PUT http://127.0.0.1:8000/scheduler -H "Content-Type: application/json" -d '{"stealing": false}'   # work stealing on or off
 curl http://127.0.0.1:8000/scheduler/stats                 # what has been measured per worker
 python scripts/simulate_schedulers.py                      # compare them on a simulated grid
 ```
@@ -255,10 +256,12 @@ See [docs/commands.md](docs/commands.md) for the full command reference, includi
 
 ## Project status
 
-- **Controller lifecycle** (worker registration, heartbeat, latency, disconnect/remove, dashboard) — complete and working.
-- **Job pipeline** (submit → validate → split → schedule → dispatch → execute → aggregate → generic result) — complete for Mandelbrot and SAT; SAT browser execution requires rebuilding the WASM package.
-- **Scheduler** — Round Robin only; capability-aware and adaptive/bandit scheduling described in [docs/scope_updated.md](docs/scope_updated.md) are research/roadmap items, not implemented.
-- **Additional workloads** — SAT is now the second workload; further workloads remain unimplemented.
+- **Controller lifecycle** (worker registration, heartbeat, latency, disconnect/remove, dashboard) — complete and working. `POST /disconnect/{uuid}` tells the tab not to reconnect (add `?reconnect=true` for a blip that reconnects).
+- **Job pipeline** (submit → validate → split → schedule → dispatch → execute → aggregate → generic result) — working for all six workloads (Mandelbrot, SAT, `sat_batch`, compression, regex, N-Queens).
+- **Fault tolerance** — numbered task attempts, requeue when a worker disconnects, misses its heartbeat, times out or reports an error, and stale answers kept for comparison. Tested live by closing a worker mid-job.
+- **Scheduler** — five algorithms (`random`, `round_robin`, `fastest_first`, `boinc`, `ucb`) chosen at start-up or switched live, with measured per-worker speed, adaptive queue sizes, adaptive timeouts and work stealing. The default is still `random`. See [docs/project_context.md](docs/project_context.md) for the live results and open items.
+- **Speed** — each tab runs a pool of compute threads (`min(cores − 1, 8)`; open `/worker?threads=N` to change it), and tasks and results travel in batches. On the test jobs this was roughly 5× to 70× faster than a single-thread tab with one message per task.
+- **Logging** — set `GRID_LOG_LEVEL` (for example `INFO`) to change the level; the default is `DEBUG`.
 
 Validated with a single-worker Mandelbrot run and a three-worker run across a laptop, phone, and Raspberry Pi 5 (2048×2048 image, 128×128 tiles, 256 tasks, all results aggregated into a final image). See [docs/validation.md](docs/validation.md) for details.
 
@@ -266,10 +269,13 @@ Validated with a single-worker Mandelbrot run and a three-worker run across a la
 
 - SAT workers require `runtime/pkg/` to be rebuilt from the included Rust
   source; the existing checked-in WASM binary predates this workload.
-- No fault tolerance — a worker that disconnects mid-task does not have its task reassigned; the job simply never completes.
-- `WorkerStates.BUSY` is defined but never assigned — the scheduler does not mark a worker busy during task execution, so a worker can in principle be handed more tasks than it can run concurrently.
+- Tested with at most three devices; the demo target is ten.
+- A losing work-stealing copy keeps computing until it finishes (there is no cancel message); its answer is then ignored.
+- A task that loses its worker or times out three times fails the whole job (the retry limit counts losses).
+- The Mandelbrot cost estimate treats every tile as equal cost, which limits how well the adaptive schedulers can place its very uneven tiles.
+- Workers are untrusted browsers, and the only check on their answers is comparing duplicates; the API has no authentication.
 - Plain `ws://` (no TLS) — fine for LAN/dev use, not for production.
-- In-memory-only state — the controller's registry, aggregators, and job tracking are lost on restart.
+- In-memory-only state — the controller's registry, aggregators, and job tracking are lost on restart (running jobs are lost; workers reconnect by themselves).
 
 See [docs/architecture.md](docs/architecture.md), [docs/protocol.md](docs/protocol.md), and [docs/validation.md](docs/validation.md) for details, and [docs/scope_updated.md](docs/scope_updated.md) for the longer-term research plan this project sits inside.
 

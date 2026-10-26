@@ -111,6 +111,16 @@ class SpeedTracker:
         record.quarantined_until = 0.0
         record.strikes = 0
 
+    def record_lower_bound(self, worker: str, workload: str, cost: float, seconds: float) -> None:
+        """A task has taken at least `seconds` and was given up on. Counted as a
+        speed sample (the real time can only be longer), so a worker that has
+        slowed down stops being believed to be fast."""
+        if seconds is None or seconds <= 0:
+            return
+        rate = seconds / max(cost, MIN_COST)
+        self._per_worker.setdefault((worker, workload), _Rate()).add(rate)
+        self._per_workload.setdefault(workload, _Rate()).add(rate)
+
     def record_timeout(self, worker: str, now: float | None = None) -> None:
         record = self._record(worker)
         record.decay()

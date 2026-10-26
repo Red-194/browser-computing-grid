@@ -7,7 +7,7 @@ import pytest
 from app.models.pcb import WorkerPCB
 from app.models.tasks import NQueensTaskConfig, Task
 from app.services.scheduler import cost
-from app.services.scheduler.capacity import CapacityPolicy
+from app.services.scheduler.capacity import MAX_PER_THREAD, CapacityPolicy
 from app.services.scheduler.stats import (
     QUARANTINE_AFTER,
     QUARANTINE_MAX_SECONDS,
@@ -208,10 +208,17 @@ def test_mandelbrot_cost_is_pixels_times_iterations():
     assert cost.task_cost("mandelbrot", config) == 5000
 
 
+def test_nqueens_cost_grows_steeply_with_the_rows_left():
+    def nq(n, depth):
+        return Task(job_id=uuid4(), task_id=0, workload="nqueens",
+                    config=NQueensTaskConfig(n=n, prefix=[0] * depth))
+
+    assert cost.cost_of(nq(10, 10)) == 1.0  # nothing left to search
+    assert cost.cost_of(nq(16, 2)) > 100 * cost.cost_of(nq(16, 6))
+    assert cost.cost_of(nq(17, 1)) > cost.cost_of(nq(16, 1))
+
+
 def test_workloads_whose_size_is_unknown_cost_one():
-    prefix = Task(job_id=uuid4(), task_id=0, workload="nqueens",
-                  config=NQueensTaskConfig(n=8, prefix=[1]))
-    assert cost.cost_of(prefix) == 1.0
     assert cost.task_cost("sat", SimpleNamespace()) == 1.0
     assert cost.task_cost("not-a-workload", SimpleNamespace()) == 1.0
 
@@ -255,3 +262,16 @@ def test_apply_sets_the_worker_records_capacity():
 
     assert policy.apply(worker, pcb, "job", 1.0) == 1
     assert pcb.capacity == 1
+
+
+def test_pool_gives_each_thread_its_own_slots():
+    unmeasured, _ = make_policy()
+    fast, _ = make_policy(rate=0.001)
+    slow, _ = make_policy(rate=30.0)
+    medium, _ = make_policy(rate=1.0)  # 2 tasks cover 2 s
+
+    assert unmeasured.slots_for_pool("w1", 8, "job", 1.0) == 8  # one per thread, no hoarding
+    assert fast.slots_for_pool("w1", 8, "job", 1.0) == 8 * MAX_PER_THREAD
+    assert slow.slots_for_pool("w1", 8, "job", 1.0) == 8
+    assert medium.slots_for_pool("w1", 8, "job", 1.0) == 8 * 2
+    assert slow.slots_for_pool("w1", 1, "job", 1.0) == 1

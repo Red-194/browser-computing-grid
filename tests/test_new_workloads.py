@@ -375,7 +375,8 @@ def test_compression_upload_endpoint_sends_exact_file_bytes():
         )
         assert rebuilt == raw  # the chunks together are exactly the file
         assert len(tasks) == 3
-        assert 1 <= len(sent) <= 2  # only as many as the worker has free slots
+        # only as many as the worker has free slots
+        assert 1 <= len(sent) <= jobs.worker_pcbs["w1"].capacity
 
         bad = client.post(
             "/jobs/compression/upload",

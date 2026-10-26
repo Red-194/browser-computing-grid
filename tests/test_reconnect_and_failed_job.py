@@ -204,3 +204,50 @@ def test_waiting_tasks_go_to_a_worker_that_just_registered(monkeypatch):
     assert sent == [("w1", 0, 2)]  # the second attempt, on the returned worker
     assert task.state == TaskState.RUNNING
     assert task.attempt == 2
+
+
+# ------------------------------------------------------- task error reports
+
+
+def test_a_task_error_requeues_that_attempt_at_once(monkeypatch):
+    async def no_dispatch(job_id=None):
+        return []
+
+    monkeypatch.setattr(jobs, "dispatch_pending", no_dispatch)
+    job_id, job_pcb = add_job(task_ids=(0,))
+    _, worker_pcb = add_worker("w1")
+    task = give_task(job_pcb, worker_pcb)
+
+    state = asyncio.run(jobs.handle_task_error("w1", job_id, 0, task.attempt, "boom"))
+
+    assert state == TaskState.WAITING
+    assert task.retries == 1 and "boom" in task.last_error
+    assert worker_pcb.running == {}
+
+
+def test_a_task_that_always_errors_ends_failed(monkeypatch):
+    async def no_dispatch(job_id=None):
+        return []
+
+    monkeypatch.setattr(jobs, "dispatch_pending", no_dispatch)
+    job_id, job_pcb = add_job(task_ids=(0,), max_retries=0)
+    _, worker_pcb = add_worker("w1")
+    task = give_task(job_pcb, worker_pcb)
+
+    state = asyncio.run(jobs.handle_task_error("w1", job_id, 0, task.attempt, "boom"))
+
+    assert state == TaskState.FAILED
+    assert job_pcb.status == JobStatus.FAILED
+
+
+def test_an_error_for_an_old_attempt_is_ignored(monkeypatch):
+    async def no_dispatch(job_id=None):
+        return []
+
+    monkeypatch.setattr(jobs, "dispatch_pending", no_dispatch)
+    job_id, job_pcb = add_job(task_ids=(0,))
+    _, worker_pcb = add_worker("w1")
+    task = give_task(job_pcb, worker_pcb)
+
+    assert asyncio.run(jobs.handle_task_error("w1", job_id, 0, task.attempt + 5, "late")) is None
+    assert task.state == TaskState.RUNNING

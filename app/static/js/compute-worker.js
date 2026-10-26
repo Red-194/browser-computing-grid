@@ -25,6 +25,7 @@ self.onmessage = async (event) => {
     if (!wasmReady) {
         self.postMessage({
             type: "error",
+            task: message.task,
             task_id: message.task.task_id,
             error: "WASM runtime is not ready."
         });
@@ -55,6 +56,7 @@ self.onmessage = async (event) => {
 
         self.postMessage({
             type: "error",
+            task: task,
             task_id: task.task_id,
             error: String(error)
         });
