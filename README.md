@@ -68,7 +68,26 @@ Other workloads (e.g. Monte Carlo, matrix multiplication) are **not currently im
 
 ## Scheduler
 
-The controller currently ships one scheduler: **Round Robin**, which assigns tasks to `IDLE` workers in rotation. Capability-aware and adaptive (multi-armed-bandit) scheduling are researched and planned — see [docs/scope_updated.md](docs/scope_updated.md) — but are not implemented yet.
+Tasks are handed out as workers have free slots, and a scheduler decides which task goes to which worker. Five algorithms are built in, in `app/services/scheduler/`:
+
+| Name | What it does |
+|---|---|
+| `random` | Baseline: a random worker with a free slot (the default) |
+| `round_robin` | Baseline: the workers in turn |
+| `fastest_first` | The worker that would finish the task soonest, from measured speed |
+| `boinc` | Adaptive, in the style of BOINC: biggest tasks first to the fastest workers, retried tasks only to reliable workers |
+| `ucb` | `fastest_first` plus a bonus for workers it has little data on |
+
+The adaptive ones learn each worker's speed per workload from the time every result reports, size each worker's queue from that speed, and leave out a worker that keeps timing out. A background monitor also takes tasks back from a worker that stays connected but stops answering. Choose the algorithm at start-up with the `GRID_SCHEDULER` environment variable (for example `GRID_SCHEDULER=boinc`), or switch it while the server runs:
+
+```bash
+curl http://127.0.0.1:8000/scheduler                       # active and available
+curl -X PUT http://127.0.0.1:8000/scheduler -H "Content-Type: application/json" -d '{"name": "boinc"}'
+curl http://127.0.0.1:8000/scheduler/stats                 # what has been measured per worker
+python scripts/simulate_schedulers.py                      # compare them on a simulated grid
+```
+
+See [docs/project_context.md](docs/project_context.md) for the design, the simulation results and the open items.
 
 ## Result model
 

@@ -1,40 +1,36 @@
-from ...models.worker import WorkerStates
 import logging
 import random
+
+from .base import Scheduler, open_workers
 
 logger = logging.getLogger("grid.scheduler")
 
 
-class RandomScheduler:
+class RandomScheduler(Scheduler):
+    """Baseline: give each task to a random worker that has a free slot."""
 
-    def schedule(self, tasks, workers, worker_pcbs=None):
+    name = "random"
 
-        available_workers = []
-        for worker in workers:
-            pcb = worker_pcbs.get(worker.uuid) if worker_pcbs else None
-            if pcb is not None and not pcb.is_online:
-                continue
-            if pcb is None and worker.state != WorkerStates.IDLE:
-                continue
-            slots = pcb.capacity - len(pcb.running) if pcb else 1
-            available_workers.extend([worker] * max(0, slots))
+    def schedule(self, tasks, workers, worker_pcbs=None, costs=None, now=None):
+        slots = []
+        for worker, free in open_workers(workers, worker_pcbs):
+            slots.extend([worker] * free)
 
-        if not available_workers:
-            logger.debug("Random scheduler found no idle workers for %d tasks", len(tasks))
+        if not slots:
+            logger.debug("Random scheduler found no free workers for %d tasks", len(tasks))
             return []
 
         assignments = []
-
         for task in tasks:
-            if not available_workers:
+            if not slots:
                 break
-            worker = random.choice(available_workers)
+            worker = random.choice(slots)
             assignments.append((task, worker))
-            available_workers.remove(worker)
+            slots.remove(worker)
 
         logger.debug(
-            "Random scheduler assigned %d tasks across %d workers",
+            "Random scheduler assigned %d tasks (%d slots left)",
             len(assignments),
-            len(available_workers),
+            len(slots),
         )
         return assignments

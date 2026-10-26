@@ -353,6 +353,7 @@ def test_compression_upload_endpoint_sends_exact_file_bytes():
     class FakeWorker:
         uuid = "w1"
         state = WorkerStates.IDLE
+        cores = 4
 
     original = (jobs.send_task, jobs.workers.copy())
     jobs.send_task = fake_send
@@ -367,8 +368,14 @@ def test_compression_upload_endpoint_sends_exact_file_bytes():
         )
         assert response.status_code == 200
         assert response.json()["filename"] == "sample.bin"
-        assert b"".join(base64.b64decode(t.config.data_base64) for t in sent) == raw
-        assert len(sent) == 3
+        job_id = response.json()["job"]["job_id"]
+        tasks = jobs.job_tasks[job_id]
+        rebuilt = b"".join(
+            base64.b64decode(tasks[i].config.data_base64) for i in sorted(tasks)
+        )
+        assert rebuilt == raw  # the chunks together are exactly the file
+        assert len(tasks) == 3
+        assert 1 <= len(sent) <= 2  # only as many as the worker has free slots
 
         bad = client.post(
             "/jobs/compression/upload",

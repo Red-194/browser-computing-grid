@@ -16,6 +16,7 @@ import urllib.request
 import uuid
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # so `app` can be imported from scripts/
 from app.logging_config import configure_logging
 
 configure_logging()

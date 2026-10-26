@@ -34,9 +34,11 @@ Sprint-based. Done:
 - **Control blocks (PCBs)** in `app/models/pcb.py`, with tests in `tests/test_pcb.py` (see section 5).
 - **PCBs connected to the controller** (teammate's commit `a567e86`, "failure recovery somehow works"): pull-style dispatch by free slots, attempt numbers sent to workers and returned, requeue on disconnect and heartbeat timeout. Reviewed and corrected on 2026-10-26 (see "Review of the controller integration" in section 5). **Not yet verified live** with real worker tabs.
 
-Next (Decided): live test of recovery from a killed worker (two real worker tabs, close one mid-job), then the timeout checker, then a speed-aware scheduler.
+- **Adaptive, modular scheduler** (built 2026-10-26, `app/services/scheduler/`; see "Adaptive scheduler" in section 5): five selectable algorithms, a per-worker speed and reliability tracker, adaptive capacity, adaptive timeouts that reallocate stuck tasks, live switching, and a simulator. **Passes its unit and simulation tests; not yet run on real worker tabs.**
 
-## 4. What the current scheduler placeholder cannot do
+Next (Decided): live test with two real worker tabs (compare the algorithms with `PUT /scheduler`, then close a tab mid-job), then decide the default algorithm from real timings.
+
+## 4. What the old scheduler placeholder could not do (kept for the reasoning; the adaptive scheduler in section 5 addresses these)
 
 `RandomScheduler` (and `RoundRobinScheduler`) assign every task up front, at submit time, and never revisit it. So:
 
@@ -151,11 +153,55 @@ What the teammate's commits `a567e86` and `d2cb275` built: `submit_job` creates 
 
 **Still open:**
 
-- **Worker capacity equals the core count** (`WorkerPCB(capacity=cores)`, with an odd fallback `getattr(worker, "cores", len(job_pcb.tasks))`). Each 8-core device gets 8 slots, not the default of 2 chosen for the PCB module, so a slow device can hold 8 tasks while a fast one idles at the end of a job. The project owner has not decided this.
-- **No timeout checker.** A worker that stays connected but is stuck holds its tasks forever. `TaskPCB.is_timed_out()` exists but nothing calls it. Recovery only happens on disconnect or heartbeat timeout.
+- **Worker capacity equals the core count** (`WorkerPCB(capacity=cores)`, with an odd fallback `getattr(worker, "cores", len(job_pcb.tasks))`). Each 8-core device got 8 slots, so a slow device could hold 8 tasks while a fast one idled at the end of a job. **Resolved 2026-10-26** by the adaptive capacity policy (owner's choice: adaptive, 1 up to cores); the fallback to the task count was removed from the dispatch path.
+- **No timeout checker.** A worker that stays connected but is stuck held its tasks forever. **Resolved 2026-10-26** by `TimeoutMonitor` (adaptive deadlines; see "Adaptive scheduler").
 - **The submit freeze is unchanged.** `submit_job` runs the splitter to completion first (`tasks = get_splitter(...).split(job)`), and only then calls `dispatch_pending`, which sends at most the free slots' worth of tasks before replying. So a huge job still blocks the server while the list is built. Sending only a few tasks first just makes the reply smaller, not the splitting faster. **Decision 2026-10-26 (project owner): splitting is not a real overhead for our use cases, so no lazy splitting, no background splitting thread and no immediate-reply redesign are planned** (see the measurements and decision under section 10).
 - **Test gaps:** no test yet for a heartbeat timeout through the monitor loop, or for the real WebSocket endpoint (an attempt to drive it with the test client hung).
 - **The live test is not done:** start the server, open worker tabs on this PC and on a second device, submit a job with enough tasks, close the second device's tab part way, and check the job still finishes with the right result and that the lost tasks show a retry; then reload a tab, and repeat with a single worker.
+
+### Adaptive scheduler (built 2026-10-26)
+
+Requested by the owner: adaptive like BOINC, modular, several algorithms to try, use PCB state to adapt (for example reallocate by time), project notes written. Decisions made with the owner: choose the algorithm at startup and switch it live; adaptive per-worker capacity from 1 up to the core count; scope = core plus simulator (speculative duplicate tasks left for a later phase because they need the PCB to allow more than one running attempt per task).
+
+**Layout** (`app/services/scheduler/`): `base.py` (interface and helpers), `stats.py` (speed and reliability tracker), `cost.py` (work per task), `capacity.py` (slots per worker), `adaptive.py` (shared machinery), `fastest_first.py`, `boinc.py`, `ucb.py`, `random.py` and `round_robin.py` (baselines), `reallocation.py` (timeouts), `simulator.py`, `__init__.py` (registry). Also `app/scheduler_routes.py` and `scripts/simulate_schedulers.py`.
+
+**Interface kept from the teammate's integration:** `schedule(tasks, workers, worker_pcbs, costs=None, now=None) -> [(TaskPCB, worker)]`. To add an algorithm: subclass `Scheduler` (or `AdaptiveScheduler` and override `pick`, `order` or `before`) and `register()` it in `__init__.py`.
+
+**Using it**
+- Start-up default: environment variable `GRID_SCHEDULER` (default `random`, so behavior is unchanged until you choose).
+- Live: `GET /scheduler` (active and available), `PUT /scheduler` with `{"name": "boinc"}`, `GET /scheduler/stats` (what has been measured per worker and workload). No authentication, like the rest of the API.
+- `python scripts/simulate_schedulers.py [--scenario NAME] [--seeds N] [--no-timeouts]`.
+
+**What it learns (`stats.py`).** Modelled on BOINC's per-host, per-application runtime estimate (mean and variance of seconds per unit of work). For each (worker, workload): running mean and variance of seconds per unit, fed by the `execution_time_ms` each result already carries. Estimate fallback: the worker's own history once it has 3 samples (BOINC uses 10; we have few devices and short jobs), else the workload average scaled by how fast that worker has been on other workloads, else the plain workload average, else unknown. Reliability per worker comes from timeouts and losses (decayed). After 3 timeouts in a row a worker is quarantined from the adaptive algorithms for 30 s, doubling on each repeat offence up to 10 min, reset by a good result or a reconnect. Task size ("cost") comes from `cost.py`: compression = chunk bytes, regex = characters scanned, Mandelbrot = tile pixels times iterations, N-Queens and SAT = 1 (their size cannot be known up front).
+
+**Algorithms**
+- `random`, `round_robin`: the baselines. Round-robin now truly rotates one task per worker (before, it favoured the first worker's slots). They ignore speed and quarantine.
+- `fastest_first`: each task goes to the worker with the earliest expected finish (its queue plus this task).
+- `boinc`: the same, plus BOINC's ideas: biggest tasks first so they land on fast workers (job size matching); retried tasks go first and only to reliable workers (accelerated retry); a worker nobody has measured gets the smallest task first.
+- `ucb`: fastest-first with an optimism bonus for lightly sampled workers, so a worker that recovered gets noticed.
+- The three adaptive ones also **hold a task back** when a busy worker would finish it clearly sooner than the best free worker (at least 30% sooner and at least 1 s sooner), so a slow device does not take the last tasks of a job. The 1 s floor exists because of a bug the simulator exposed: without it the rule made the adaptive algorithms 19% slower on network-bound jobs.
+
+**Adaptive capacity (`capacity.py`).** A worker holds enough tasks to cover about 2 s of its measured task time, between 1 and its cores; 2 until it has been measured. Applied in `dispatch_pending` before each scheduling pass.
+
+**Adaptive reallocation (`reallocation.py`).** A background `TimeoutMonitor` (started in `lifespan`) checks every second. Each running task gets a deadline of `max(10 s, (mean + 3 std) * 2)` from its worker's measured time (60 s if unmeasured), multiplied by the number of tasks the worker holds (a queued task also waits for the ones ahead). On expiry the task is requeued with its attempt number, the worker's slot is freed at once, the worker is marked as having timed out, and the task is dispatched again. A late answer from the slow worker is then a harmless stale result. PCB signals used: task state, attempt, retries and `assigned_at`; worker running set, capacity and online state.
+
+**What the simulator found.** `simulator.py` runs the real scheduler, PCB, tracker, capacity and timeout code against a virtual clock. Worker speeds are assumptions (some taken from our measurements), so this shows behavior and not real speed. Results are averages over 5 to 8 seeds.
+- **The algorithm often does not matter.** With small per-worker queues each finished task frees exactly one slot, so there is only one possible recipient and every algorithm makes the same choice. Identical workers, and network-bound jobs (tiny tasks against a roughly 100 ms round trip, like our compression benchmark), gave the same finish time for all five. Pull-style dispatch with adaptive capacity is already self-balancing; cutting overhead helps such jobs, not scheduling.
+- **Heterogeneous compute-heavy tasks:** adaptive 79.3 s against 80.6 s (random) and 80.9 s (round-robin) on 3 devices 5x, 2x and 1x as fast; efficiency 0.95 against 0.93. A small gain, almost all from the hold-back rule near the end of the job.
+- **Known, uneven task sizes** (like compression chunks, regex batches, Mandelbrot tiles): `boinc` clearly wins: 23.7 s at efficiency 0.97 with a tight spread, against 30.6 s (round-robin), 32.6 (ucb), 34.6 (random) and 34.8 (fastest_first) at 0.67 to 0.77. Size matching makes the difference.
+- **Unknown, heavy-tailed task sizes** (N-Queens, SAT): no algorithm is reliably better. Finish time is decided by which worker gets the one huge task near the end (24 s to 41 s for the same algorithm across seeds). Speculative re-execution of stragglers would address this.
+- **Faults:** a worker that disconnects is handled equally by all five (that is the requeue code, not the scheduler). A worker that stays connected but hangs, or a tab throttled to 8x slower: the baselines **fail** (0 of 6 runs finish, because they keep sending it work, every task sent to it times out and tasks run out of retries) while the adaptive ones finish 6 of 6 (about 204 s and 269 s) by quarantining it. Without the timeout monitor nobody finishes the hung-worker scenario.
+- **Waste:** in the throttled-tab scenario the slowed worker keeps computing tasks that were already taken back (about 200 s of compute per run discarded). The worker protocol has no way to cancel a task; adding one would remove this.
+
+**Known limitations and open items**
+- The default stays `random`. Pick the default only after the live comparison on real tabs.
+- The tracker's workload key is the job's workload name, so lz4 and zstd tasks of one compression job share a speed estimate. A key that includes the variant would separate them.
+- All constants (EWMA weight, 3-sample threshold, 2 s queue target, deadline factors, hold-back ratio and 1 s floor, quarantine times) are single named constants, to be tuned after the live runs.
+- Hold-back and the timeout deadline use rough queue-position estimates (a busy worker is assumed to have all its tasks ahead of the new one).
+- Not built: speculative duplicates, a cancel message to workers, and adaptive replication (verifying trusted workers less).
+- Tests: `tests/test_scheduler_stats.py`, `test_scheduler_algorithms.py`, `test_scheduler_integration.py`, `test_scheduler_simulation.py`.
+- `scripts/submit_job.py`, `compress_file.py` and `test_all_workloads.py` failed to start (`ModuleNotFoundError: No module named 'app'`) after the logging change, because Python puts `scripts/` on the path, not the project root. Fixed on 2026-10-26 by adding the project root to `sys.path` at the top of each.
+- The dispatch code no longer falls back to "one slot per task" for a worker without a core count (it now falls back to 1); the adaptive capacity policy sets the real value anyway.
 
 ### Candidate scheduler ideas (Proposed, none confirmed new)
 

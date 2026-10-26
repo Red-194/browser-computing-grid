@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 
 from .models.protocol import PingMessage
 from .registry import workers
+from .websocket import send_json
 
 HEARTBEAT_TIMEOUT = 15
 logger = logging.getLogger("grid.monitoring")
@@ -26,9 +27,7 @@ async def ping_workers():
                     timestamp=time.perf_counter()
                 )
 
-                await worker.websocket.send_json(
-                    ping.model_dump()
-                )
+                await send_json(worker.websocket, ping.model_dump())
 
             except Exception as e:
                 logger.error("Failed to ping worker %s: %s", worker.uuid, e)

@@ -1,6 +1,8 @@
+import asyncio
 import math
 import logging
 import time
+import weakref
 from datetime import datetime
 from uuid import UUID
 
@@ -11,9 +13,25 @@ from .models.protocol import HeartbeatMessage, PongMessage, RegisterAckMessage, 
 from .models.worker import Worker, WorkerMetadata, WorkerStates
 from .registry import workers, worker_pcbs
 from .models.pcb import WorkerPCB
+from .services.scheduler.stats import tracker as speed_tracker
 
 router = APIRouter()
 logger = logging.getLogger("grid.websocket")
+
+# One lock per connection. Two coroutines writing to the same websocket at once
+# (a dispatch sending tasks while another dispatch or a ping also sends) can make
+# the library raise AssertionError when large messages fill the write buffer, so
+# every send goes through send_json below.
+_send_locks: "weakref.WeakKeyDictionary" = weakref.WeakKeyDictionary()
+
+
+async def send_json(websocket, payload) -> None:
+    lock = _send_locks.get(websocket)
+    if lock is None:
+        lock = _send_locks[websocket] = asyncio.Lock()
+    async with lock:
+        await websocket.send_json(payload)
+
 
 async def send_task(worker, task, attempt: int | None = None):
     if worker.websocket is None:
@@ -26,15 +44,16 @@ async def send_task(worker, task, attempt: int | None = None):
         }
         if attempt is not None:
             payload["task"]["attempt"] = attempt
-        await worker.websocket.send_json(payload)
+        await send_json(worker.websocket, payload)
 
         return True
 
     except Exception as e:
         logger.error(
-            "Failed to send task %s to worker %s: %s",
+            "Failed to send task %s to worker %s: %s %r",
             task.task_id,
             worker.uuid,
+            type(e).__name__,
             e,
         )
 
@@ -58,6 +77,7 @@ async def attach_worker_pcb(worker):
             await handle_worker_failure(worker.uuid, "worker re-registered")
         worker_pcb.mark_online()
     worker_pcb.touch()
+    speed_tracker.clear_quarantine(worker.uuid)  # a reconnecting worker starts fresh
     sync_worker_state(worker.uuid)
     return worker_pcb
 
@@ -153,7 +173,7 @@ async def websocket_endpoint(websocket: WebSocket):
                     state=worker.state
                 )
 
-                await websocket.send_json(ack.model_dump())
+                await send_json(websocket, ack.model_dump())
 
                 # A worker that just joined (or came back) can take waiting tasks.
                 from .jobs import dispatch_pending

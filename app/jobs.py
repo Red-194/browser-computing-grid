@@ -7,7 +7,7 @@ from fastapi import APIRouter, File, Form, HTTPException, Response, UploadFile
 from pydantic import ValidationError
 
 from .models.jobs import MAX_SYNTHETIC_BYTES, JobSubmission
-from .models.pcb import CompletionOutcome, JobPCB, JobStatus, WorkerPCB
+from .models.pcb import CompletionOutcome, JobPCB, JobStatus, TaskState, WorkerPCB
 from .models.worker import WorkerStates
 from .registry import (
     aggregators,
@@ -20,11 +20,14 @@ from .registry import (
     workers,
 )
 from .services.loader import get_aggregator, get_splitter
-from .services.scheduler.random import RandomScheduler
+from .services import scheduler as scheduler_registry
+from .services.scheduler.capacity import CapacityPolicy
+from .services.scheduler.cost import cost_of
+from .services.scheduler.stats import tracker as speed_tracker
 from .websocket import send_task
 
 router = APIRouter(prefix="/jobs", tags=["Jobs"])
-scheduler = RandomScheduler()
+capacity_policy = CapacityPolicy(speed_tracker)
 logger = logging.getLogger("grid.jobs")
 
 
@@ -127,31 +130,56 @@ async def dispatch_pending(job_id: UUID | None = None) -> list[dict]:
                     worker.uuid,
                     capacity=max(
                         1,
-                        getattr(worker, "cores", len(job_pcb.tasks)),
+                        getattr(worker, "cores", 1),
                     ),
                 )
-        assignments = scheduler.schedule(
-            job_pcb.waiting(), list(workers.values()), worker_pcbs
+        waiting = job_pcb.waiting()
+        if not waiting:
+            continue
+        tasks_by_id = job_tasks[str(job_pcb.job_id)]
+        costs = {task.key: cost_of(tasks_by_id[task.task_id]) for task in waiting}
+        typical_cost = costs[waiting[0].key]
+        for worker in workers.values():
+            capacity_policy.apply(
+                worker, worker_pcbs[worker.uuid], job_pcb.workload, typical_cost
+            )
+        assignments = scheduler_registry.active().schedule(
+            waiting, list(workers.values()), worker_pcbs, costs=costs
         )
-        retry_dispatch = False
+        # Claim every assignment first, with no await in between, so another
+        # dispatch that runs while we are sending cannot pick the same tasks.
+        claimed = []
         for task_pcb, worker in assignments:
+            if task_pcb.state != TaskState.WAITING:
+                continue
             attempt = task_pcb.assign(worker.uuid)
-            worker_pcb = worker_pcbs[worker.uuid]
-            worker_pcb.assign(task_pcb.key, attempt)
+            worker_pcbs[worker.uuid].assign(task_pcb.key, attempt)
             sync_worker_state(worker.uuid)
-            task = job_tasks[str(job_pcb.job_id)][task_pcb.task_id]
+            claimed.append((task_pcb, worker, attempt))
+
+        for task_pcb, worker, attempt in claimed:
+            if (
+                task_pcb.state != TaskState.RUNNING
+                or task_pcb.attempt != attempt
+                or task_pcb.worker_uuid != worker.uuid
+            ):
+                continue  # taken back already, for example when this worker's send failed
+            task = tasks_by_id[task_pcb.task_id]
             sent = await send_task(worker, task, attempt=attempt)
             if sent is not False:
                 dispatched.append(
                     {"task_id": task.task_id, "worker": worker.uuid, "attempt": attempt}
                 )
             else:
-                retry_dispatch = True
-                worker_pcb.release(task_pcb.key, completed=False)
-                task_pcb.requeue("task send failed", attempt=attempt)
-                sync_worker_state(worker.uuid)
-        if retry_dispatch and job_pcb.status == JobStatus.RUNNING and job_pcb.waiting():
-            dispatched.extend(await dispatch_pending(job_pcb.job_id))
+                # The connection is not usable. Treat the worker as lost: everything
+                # it holds goes back to waiting and is handed to others at once (not
+                # retried on this same connection), and closing the socket makes the
+                # browser reconnect and register again.
+                await handle_worker_failure(worker.uuid, "task send failed")
+                try:
+                    await worker.websocket.close()
+                except Exception:
+                    pass
     return dispatched
 
 
@@ -176,6 +204,14 @@ async def handle_task_result(
         return outcome
     worker_pcb.release(task_pcb.key)
     sync_worker_state(worker_uuid)
+    if execution_time_ms is not None:
+        task = job_tasks.get(str(job_id), {}).get(task_id)
+        speed_tracker.record_result(
+            worker_uuid,
+            task_pcb.workload,
+            cost_of(task) if task is not None else 1.0,
+            execution_time_ms / 1000,
+        )
     if isinstance(result, dict):
         result = {
             **result,
@@ -195,6 +231,8 @@ async def handle_worker_failure(worker_uuid: str, reason: str) -> None:
         return
     lost = worker_pcb.mark_offline()
     sync_worker_state(worker_uuid)
+    if lost:
+        speed_tracker.record_failure(worker_uuid)
     for (job_id, task_id), attempt in lost:
         job_pcb = job_pcbs.get(str(job_id))
         if job_pcb is not None:

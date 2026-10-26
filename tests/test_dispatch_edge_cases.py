@@ -130,37 +130,109 @@ def test_answer_for_an_unknown_job_is_dropped_quietly():
 # ------------------------------------------------------- failed delivery
 
 
-def test_failed_send_is_retried_and_the_job_fails_when_retries_run_out(monkeypatch):
-    sent = patch_send(monkeypatch, outcome=False)  # every send fails
-    job_id, job_pcb, aggregator = add_job(max_retries=2)
-    worker = add_worker("w1")
-
-    asyncio.run(jobs.dispatch_pending(job_id))
-
-    assert len(sent) == 3  # the first try plus 2 retries, then it gives up
-    assert job_pcb.task(0).state == TaskState.FAILED
-    assert job_pcb.status == JobStatus.FAILED
-    assert jobs.worker_pcbs["w1"].running == {}  # no slot is left held
-    assert worker.state == WorkerStates.IDLE
-
-
-def test_send_that_works_on_the_second_try_still_finishes(monkeypatch):
-    results = iter([False, True])
+def test_a_failed_send_takes_the_worker_out_and_the_task_goes_to_another_worker(monkeypatch):
     sent = []
 
-    async def flaky_send(worker, task, attempt=None):
-        sent.append(attempt)
-        return next(results)
+    async def send(worker, task, attempt=None):
+        if worker.uuid == "broken":
+            return False
+        sent.append((worker.uuid, task.task_id, attempt))
+        return True
 
-    monkeypatch.setattr(jobs, "send_task", flaky_send)
-    job_id, job_pcb, aggregator = add_job()
-    add_worker("w1")
+    monkeypatch.setattr(jobs, "send_task", send)
+    registry_scheduler = __import__("app.services.scheduler", fromlist=["x"])
+    registry_scheduler.set_active("round_robin")  # so "broken" is offered a task first
+    try:
+        job_id, job_pcb, aggregator = add_job(task_ids=(0, 1))
+        broken = add_worker("broken", capacity=2)
+        add_worker("good", capacity=2)
+
+        asyncio.run(jobs.dispatch_pending(job_id))
+    finally:
+        registry_scheduler.set_active("random")
+
+    assert not jobs.worker_pcbs["broken"].is_online  # treated as lost
+    assert jobs.worker_pcbs["broken"].running == {}
+    assert broken.state == WorkerStates.OFFLINE
+    # Both tasks ended up on the good worker, the one that was offered first on attempt 2.
+    assert sorted(task_id for _, task_id, _ in sent) == [0, 1]
+    assert {worker for worker, _, _ in sent} == {"good"}
+    assert job_pcb.count(TaskState.RUNNING) == 2
+
+
+def test_a_failed_send_is_not_retried_on_the_same_connection_again_and_again(monkeypatch):
+    attempts_on_broken = []
+
+    async def send(worker, task, attempt=None):
+        attempts_on_broken.append(task.task_id)
+        return False
+
+    monkeypatch.setattr(jobs, "send_task", send)
+    job_id, job_pcb, _ = add_job(task_ids=(0,), max_retries=3)
+    add_worker("only", capacity=2)
 
     asyncio.run(jobs.dispatch_pending(job_id))
 
-    assert sent == [1, 2]
+    assert attempts_on_broken == [0]  # one try, then the worker is out
+    task = job_pcb.task(0)
+    assert task.state == TaskState.WAITING  # not failed: it waits for a working worker
+    assert task.retries == 1
+    assert job_pcb.status == JobStatus.RUNNING
+
+
+def test_the_task_is_sent_again_when_the_worker_reconnects(monkeypatch):
+    from app import websocket
+
+    outcomes = iter([False, True])
+    sent = []
+
+    async def send(worker, task, attempt=None):
+        ok = next(outcomes)
+        if ok:
+            sent.append((worker.uuid, task.task_id, attempt))
+        return ok
+
+    monkeypatch.setattr(jobs, "send_task", send)
+    job_id, job_pcb, _ = add_job(task_ids=(0,))
+    worker = add_worker("w1", capacity=2)
+    asyncio.run(jobs.dispatch_pending(job_id))
+    assert job_pcb.task(0).state == TaskState.WAITING  # the first send failed
+
+    # The browser reconnects and registers again.
+    worker.websocket = object()
+    asyncio.run(websocket.attach_worker_pcb(worker))
+    asyncio.run(jobs.dispatch_pending())
+
+    assert sent == [("w1", 0, 2)]  # attempt 2, on the same worker, now reconnected
     assert job_pcb.task(0).state == TaskState.RUNNING
-    assert job_pcb.task(0).attempt == 2
+
+
+def test_a_send_that_fails_halfway_through_a_batch_does_not_lose_the_rest(monkeypatch):
+    from app.services import scheduler as registry_scheduler
+
+    failed = {"once": False}
+
+    async def send(worker, task, attempt=None):
+        if worker.uuid == "flaky" and not failed["once"]:
+            failed["once"] = True
+            return False  # the first send to "flaky" fails
+        return True
+
+    monkeypatch.setattr(jobs, "send_task", send)
+    registry_scheduler.set_active("round_robin")  # flaky, steady, flaky ...
+    try:
+        job_id, job_pcb, _ = add_job(task_ids=(0, 1, 2))
+        add_worker("flaky", capacity=3)
+        add_worker("steady", capacity=3)
+
+        asyncio.run(jobs.dispatch_pending(job_id))
+    finally:
+        registry_scheduler.set_active("random")
+
+    assert failed["once"]
+    assert all(task.state == TaskState.RUNNING for task in job_pcb.tasks.values())
+    assert {task.worker_uuid for task in job_pcb.tasks.values()} == {"steady"}  # nothing lost
+    assert jobs.worker_pcbs["flaky"].running == {}
 
 
 # ------------------------------------------------------ repeated failures
@@ -218,3 +290,57 @@ def test_submit_logs_how_long_the_splitter_took(caplog):
     assert len(finished) == 1
     assert f"{reply['task_count']} tasks in" in finished[0]
     assert finished[0].endswith(" s")
+
+
+# ------------------------------------------------------ one send at a time
+
+
+class StrictWebSocket:
+    """Fails like the real library when two sends overlap."""
+
+    def __init__(self):
+        self.busy = False
+        self.sent = 0
+
+    async def send_json(self, payload):
+        assert not self.busy, "two sends at once"
+        self.busy = True
+        await asyncio.sleep(0.01)  # time during which another send could start
+        self.busy = False
+        self.sent += 1
+
+
+def test_sends_to_one_connection_never_overlap():
+    from app.websocket import send_json
+
+    socket = StrictWebSocket()
+
+    async def many():
+        await asyncio.gather(*(send_json(socket, {"n": i}) for i in range(10)))
+
+    asyncio.run(many())
+
+    assert socket.sent == 10
+
+
+def test_without_the_lock_overlapping_sends_do_fail():
+    socket = StrictWebSocket()
+
+    async def many():
+        await asyncio.gather(*(socket.send_json({"n": i}) for i in range(3)))
+
+    with pytest.raises(AssertionError):
+        asyncio.run(many())
+
+
+def test_different_connections_are_not_held_up_by_each_other():
+    from app.websocket import send_json
+
+    first, second = StrictWebSocket(), StrictWebSocket()
+
+    async def both():
+        await asyncio.gather(send_json(first, {}), send_json(second, {}))
+
+    asyncio.run(both())
+
+    assert (first.sent, second.sent) == (1, 1)

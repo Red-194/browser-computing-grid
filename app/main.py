@@ -10,6 +10,8 @@ from .monitoring import ping_workers, monitor_heartbeats
 from .routes import router
 from .websocket import router as websocket_router
 from .jobs import router as jobs_router
+from .scheduler_routes import router as scheduler_router
+from .services.scheduler.reallocation import TimeoutMonitor
 
 configure_logging()
 
@@ -18,6 +20,7 @@ async def lifespan(app: FastAPI):
     background_tasks = [
         asyncio.create_task(ping_workers()),
         asyncio.create_task(monitor_heartbeats()),
+        asyncio.create_task(TimeoutMonitor().run()),
     ]
     try:
         yield
@@ -48,3 +51,4 @@ app.include_router(router)
 app.include_router(websocket_router)
 app.include_router(events_router)
 app.include_router(jobs_router)
+app.include_router(scheduler_router)
