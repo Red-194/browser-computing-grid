@@ -8,6 +8,8 @@ Where the size of a task cannot be known before running it, the cost is 1, so
 the speed estimate becomes "seconds per task" and the spread of the samples
 carries the uncertainty. SAT is only partly knowable: see `_sat`.
 """
+import hashlib
+import random
 import math
 import random
 
@@ -57,15 +59,171 @@ def _mandelbrot(config) -> float:
 
     return pixels * total / (MANDELBROT_SAMPLES * MANDELBROT_SAMPLES)
 
+NQUEENS_EXACT_DEPTH = 2
+NQUEENS_PROBES_PER_FRONTIER = 16
 
-def _nqueens(config) -> float:
-    """Search nodes under the fixed prefix, from a curve fitted to measured counts
-    (about 490 nodes with 8 rows left, 5 million with 14, 68 million with 15).
-    Right to within a factor of two or so, which is enough: what matters is that a
-    task with the whole board left costs thousands of times a nearly finished one."""
-    rows_left = max(0, config.n - len(config.prefix))
-    return math.exp(0.341 * rows_left + 0.0542 * rows_left * rows_left)
+def _nqueens_state(config):
+    """Convert an N-Queens prefix into the board state used by the solver."""
+    n = config.n
 
+    if n <= 0 or n > 32:
+        return None
+
+    full = (1 << n) - 1
+
+    cols = 0
+    diag1 = 0
+    diag2 = 0
+
+    for col in config.prefix:
+        if col < 0 or col >= n:
+            return None
+
+        bit = 1 << col
+
+        if bit & (cols | diag1 | diag2):
+            return None
+
+        cols |= bit
+        diag1 = ((diag1 | bit) << 1) & full
+        diag2 = ((diag2 | bit) >> 1)
+
+    return full, cols, diag1, diag2
+
+
+def _nqueens_children(state):
+    """Generate all legal next states."""
+    full, cols, diag1, diag2 = state
+
+    free = full & ~(cols | diag1 | diag2)
+
+    children = []
+
+    while free:
+        bit = free & -free
+        free ^= bit
+
+        children.append(
+            (
+                full,
+                cols | bit,
+                ((diag1 | bit) << 1) & full,
+                (diag2 | bit) >> 1,
+            )
+        )
+
+    return children
+
+
+def _knuth_probe(state, rng):
+    """
+    Estimate the remaining search-tree size by following
+    one random root-to-leaf path.
+    """
+    total = 0.0
+    path_count = 1.0
+    current = state
+
+    while True:
+        children = _nqueens_children(current)
+
+        if not children:
+            return total
+
+        path_count *= len(children)
+        total += path_count
+
+        current = rng.choice(children)
+
+
+def _nqueens_partial_backtrack(
+    state,
+    exact_depth=NQUEENS_EXACT_DEPTH,
+    probes=NQUEENS_PROBES_PER_FRONTIER,
+    rng=None,
+):
+    """
+    Explore the first few levels exactly, then estimate each
+    resulting subtree using Knuth probes.
+    """
+    if rng is None:
+        rng = random.Random(0)
+
+    frontier = [state]
+    exact_nodes = 0
+
+    # Explore the first levels exactly.
+    for _ in range(exact_depth):
+        next_frontier = []
+
+        for node in frontier:
+            children = _nqueens_children(node)
+
+            exact_nodes += len(children)
+            next_frontier.extend(children)
+
+        frontier = next_frontier
+
+        if not frontier:
+            return float(exact_nodes)
+
+    # Estimate every remaining subtree independently.
+    estimated = float(exact_nodes)
+
+    for node in frontier:
+        samples = [
+            _knuth_probe(node, rng)
+            for _ in range(probes)
+        ]
+
+        estimated += sum(samples) / len(samples)
+
+    return estimated
+
+
+def _nqueens(config):
+    """
+    Estimate N-Queens work from the actual prefix/search-tree state.
+
+    The estimate is expressed in search nodes, matching the `nodes`
+    counter produced by the Rust N-Queens kernel.
+    """
+    state = _nqueens_state(config)
+
+    if state is None:
+        return 1.0
+
+    rows_left = config.n - len(config.prefix)
+
+    if rows_left <= 0:
+        return 1.0
+
+    # Deterministic seed for this particular N-Queens task.
+    seed_material = (
+        f"{config.n}:{','.join(map(str, config.prefix))}"
+    ).encode()
+
+    seed = int.from_bytes(
+        hashlib.sha256(seed_material).digest()[:8],
+        "big",
+    )
+
+    rng = random.Random(seed)
+
+    exact_depth = min(
+        NQUEENS_EXACT_DEPTH,
+        rows_left,
+    )
+
+    return max(
+        1.0,
+        _nqueens_partial_backtrack(
+            state,
+            exact_depth=exact_depth,
+            probes=NQUEENS_PROBES_PER_FRONTIER,
+            rng=rng,
+        ),
+    )
 
 # SAT: the kernel is plain DPLL, so a task's time is the number of clause visits,
 # and that depends on the formula far more than on its size. Fitted on 1,050
