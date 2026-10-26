@@ -302,3 +302,33 @@ def test_a_worker_with_more_threads_gets_more_of_the_work_at_the_same_speed(name
     shares = count_by_worker(build(name, tracker).schedule(make_tasks(10), workers, pcbs))
 
     assert shares["wide"] > 2 * shares.get("narrow", 0)
+
+
+@pytest.mark.parametrize("name", ADAPTIVE)
+def test_a_task_taken_back_from_the_fastest_worker_goes_to_another_idle_worker(name):
+    # Both workers are idle and nothing is running, so nothing will ever trigger
+    # another pass: the task must be given to the other worker now, not held.
+    tracker = SpeedTracker()
+    teach(tracker, "fast", 1.0)
+    teach(tracker, "other", 2.0)
+    workers, pcbs = make_workers(fast=2, other=2)
+    task = make_tasks(1)[0]
+    task.last_worker = "fast"
+
+    result = build(name, tracker).schedule([task], workers, pcbs)
+
+    assert [worker.uuid for _, worker in result] == ["other"]
+
+
+@pytest.mark.parametrize("name", ADAPTIVE)
+def test_a_task_taken_back_goes_to_the_same_worker_when_the_other_is_far_slower(name):
+    tracker = SpeedTracker()
+    teach(tracker, "fast", 1.0)
+    teach(tracker, "crawl", 50.0)
+    workers, pcbs = make_workers(fast=2, crawl=2)
+    task = make_tasks(1)[0]
+    task.last_worker = "fast"
+
+    result = build(name, tracker).schedule([task], workers, pcbs)
+
+    assert [worker.uuid for _, worker in result] == ["fast"]

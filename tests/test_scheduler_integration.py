@@ -105,7 +105,8 @@ def test_dispatch_uses_the_active_scheduler_and_the_measured_speeds(monkeypatch)
     assert per_worker["fast"] > per_worker["slow"]
     # Each of a worker's 4 threads holds one slow task, but up to 4 fast ones.
     assert jobs.worker_pcbs["slow"].capacity == 4
-    assert jobs.worker_pcbs["fast"].capacity == 4 * 20  # 2 s of 0.1 s tasks per thread
+    # 2 s of 0.1 s tasks would be 20 per thread, but only 6 tasks are left for 8 threads.
+    assert jobs.worker_pcbs["fast"].capacity == 4 * 1
 
 
 def test_switching_scheduler_changes_how_the_next_job_is_spread(monkeypatch):
@@ -301,6 +302,19 @@ def test_the_monitor_does_nothing_when_nothing_is_late(monkeypatch):
     started = job_pcb.task(0).assigned_at
 
     assert asyncio.run(reallocation.TimeoutMonitor().check_once(now=started + 1)) == 0
+
+
+def test_the_monitor_dispatches_a_job_whose_tasks_are_waiting_with_nothing_running(monkeypatch):
+    sent = patch_send(monkeypatch)
+    registry.set_active("boinc")
+    add_worker("only")
+    teach("only", 0.5)
+    job_id, job_pcb, _ = add_job(2)
+    assert job_pcb.count(TaskState.RUNNING) == 0 and job_pcb.count(TaskState.WAITING) == 2
+
+    asyncio.run(reallocation.TimeoutMonitor().check_once(now=1.0))
+
+    assert {task_id for _, task_id, _ in sent} == {0, 1}
 
 
 # ----------------------------------------------------------------- endpoints

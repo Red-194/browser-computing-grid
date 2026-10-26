@@ -104,7 +104,11 @@ class AdaptiveScheduler(Scheduler):
             guess = self.guess(estimates)
             choice = self.pick(task, cost, open_candidates, estimates, guess)
             if self.should_avoid(task, cost, choice, estimates, workers, worker_pcbs, now):
-                continue  # it was just taken back from this worker; wait for another
+                # It was just taken back from this worker. Use another one that is
+                # free right now; if none is, wait for one to free up.
+                choice = self.next_best(task, cost, choice, open_candidates, estimates, guess)
+                if choice is None:
+                    continue
             if self.better_to_wait(task, cost, choice, estimates, guess, busy):
                 continue  # leave it waiting; a smaller task may suit this worker
             self.give(choice, task, estimates[choice.uuid], guess, assignments)
@@ -232,6 +236,23 @@ class AdaptiveScheduler(Scheduler):
             if other.mean <= AVOID_MAX_SLOWDOWN * own.mean:
                 return True
         return False
+
+    def next_best(self, task, cost, avoided, candidates, estimates, guess):
+        """The best free worker other than `avoided`, or None if there is none or
+        it would be more than AVOID_MAX_SLOWDOWN times slower on this task.
+
+        Without this, a task taken back from the fastest worker was skipped even
+        when another worker was idle, and with nothing running no later event
+        dispatched it: the job hung with its last tasks waiting.
+        """
+        others = [c for c in candidates if c.uuid != avoided.uuid]
+        if not others:
+            return None
+        choice = self.pick(task, cost, others, estimates, guess)
+        own, other = estimates.get(avoided.uuid), estimates.get(choice.uuid)
+        if own is None or own.mean <= 0 or other is None:
+            return choice  # no basis to compare: prefer a different worker
+        return choice if other.mean <= AVOID_MAX_SLOWDOWN * own.mean else None
 
     def better_to_wait(self, task, cost, choice, estimates, guess, busy) -> bool:
         """True if a busy worker would finish this task clearly sooner than the

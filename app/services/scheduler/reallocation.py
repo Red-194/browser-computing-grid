@@ -126,7 +126,16 @@ class TimeoutMonitor:
                     task_pcb.job_id,
                     worker_uuid,
                 )
-        if taken:
+        # Safety net: a job with tasks waiting and none running has nothing left
+        # that would trigger another dispatch (no result, no worker event). If the
+        # scheduler held those tasks back, they would wait forever.
+        stalled = any(
+            job.status == JobStatus.RUNNING
+            and job.count(TaskState.WAITING) > 0
+            and job.count(TaskState.RUNNING) == 0
+            for job in job_pcbs.values()
+        )
+        if taken or stalled:
             await jobs.dispatch_pending()
         await jobs.speculate_pending()
         return taken

@@ -295,3 +295,18 @@ def test_pool_gives_each_thread_its_own_slots():
     assert slow.slots_for_pool("w1", 8, "job", 1.0) == 8
     assert medium.slots_for_pool("w1", 8, "job", 1.0) == 8 * 2
     assert slow.slots_for_pool("w1", 1, "job", 1.0) == 1
+
+
+def test_pool_never_holds_more_than_its_share_of_what_is_left():
+    mid, _ = make_policy(rate=0.03)  # 2 s would be 67 tasks, so the per-thread cap is 64
+    # 100 tasks left, 5 threads in the whole pool: 100 / (2 * 5) = 10 per thread.
+    assert mid.slots_for_pool("w1", 4, "job", 1.0, remaining=100, total_threads=5) == 4 * 10
+    # A big job is untouched: the per-thread cap is lower than the share.
+    assert mid.slots_for_pool("w1", 4, "job", 1.0, remaining=100000, total_threads=5) == 4 * MAX_PER_THREAD
+    # At the tail a thread still holds enough to cover a round trip (0.1 s of 30 ms tasks).
+    assert mid.slots_for_pool("w1", 4, "job", 1.0, remaining=1, total_threads=5) == 4 * 4
+    # Tiny tasks (1 ms) need more than that to stay busy, so they keep the full pipeline.
+    tiny, _ = make_policy(rate=0.001)
+    assert tiny.slots_for_pool("w1", 4, "job", 1.0, remaining=100, total_threads=5) == 4 * MAX_PER_THREAD
+    # Without the job figures nothing changes.
+    assert mid.slots_for_pool("w1", 4, "job", 1.0) == 4 * MAX_PER_THREAD

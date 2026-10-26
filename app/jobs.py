@@ -168,9 +168,16 @@ async def dispatch_pending(job_id: UUID | None = None) -> list[dict]:
             for task in waiting
         }
         typical_cost = costs[waiting[0].key]
+        unfinished = job_pcb.count(TaskState.WAITING) + job_pcb.count(TaskState.RUNNING)
+        total_threads = sum(
+            max(1, getattr(w, "cores", 1) or 1)
+            for w in workers.values()
+            if worker_pcbs[w.uuid].is_online
+        )
         for worker in workers.values():
             capacity_policy.apply_pool(
-                worker, worker_pcbs[worker.uuid], job_pcb.workload, typical_cost
+                worker, worker_pcbs[worker.uuid], job_pcb.workload, typical_cost,
+                unfinished, total_threads,
             )
         assignments = scheduler_registry.active().schedule(
             waiting, list(workers.values()), worker_pcbs, costs=costs
