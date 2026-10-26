@@ -223,6 +223,8 @@ Requested by the owner for unevenly splitting workloads (N-Queens, SAT): when wo
 
 ### Live results (2026-10-26, laptop Firefox and Chrome tabs; the phone for some runs)
 
+**Final measured results, with raw data and statistics, are in [results/scheduler_results.md](results/scheduler_results.md)** (headline: on Mandelbrot with a laptop tab and a phone, the adaptive algorithms take about 13 s against 28 s for `random`, 2.2x). The notes below are the running log from the same day, before the cost-model and avoid-rule fixes.
+
 Finding: **work stealing works as designed but its benefit is small and not yet proven.**
 - Mechanism: copies are sent, the first answer wins, the loser's slot is freed, results stay correct (N-Queens answers matched the known counts for n = 12 to 17).
 - With two equal-speed workers all five algorithms tie (about 8 s on N-Queens n=16, compute-bound).
