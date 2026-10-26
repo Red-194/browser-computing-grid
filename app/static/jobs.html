@@ -292,6 +292,68 @@
         }
 
 
+        /* Multi-line boxes (SAT clauses, regex patterns, texts).
+           Same look as the inputs above. */
+        textarea {
+
+            width: 100%;
+
+            min-height: 96px;
+
+            box-sizing: border-box;
+
+            padding: 10px 12px;
+
+            border: 1px solid var(--border);
+
+            border-radius: 8px;
+
+            background: var(--bg);
+
+            color: var(--text);
+
+            font-family: Consolas, Monaco, monospace;
+
+            font-size: 12px;
+
+            resize: vertical;
+
+            outline: none;
+        }
+
+
+        textarea:focus {
+
+            border-color: var(--accent);
+        }
+
+
+        /* File picker (compression upload) */
+        input[type="file"] {
+
+            padding: 9px 12px;
+        }
+
+
+        /* Small help line under a field */
+        .field-hint {
+
+            margin-top: 6px;
+
+            color: var(--muted);
+
+            font-size: 11px;
+        }
+
+
+        /* Make sure hidden workload sections really hide,
+           even when they use display: grid */
+        [hidden] {
+
+            display: none !important;
+        }
+
+
         .two-column {
 
             display: grid;
@@ -635,6 +697,96 @@
         }
 
 
+/* N-QUEENS RESULT */
+.nqueens-stats {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+    margin: 16px 0;
+}
+
+.nqueens-stat {
+    min-width: 0;
+    padding: 14px;
+    border: 1px solid var(--border);
+    border-radius: 9px;
+    background: var(--panel);
+}
+
+.nqueens-stat-label {
+    display: block;
+    margin-bottom: 8px;
+    color: var(--muted);
+    font-size: 11px;
+}
+
+.nqueens-stat-value {
+    display: block;
+    color: var(--text);
+    font-size: 18px;
+    overflow-wrap: anywhere;
+}
+
+.nqueens-board-message {
+    margin: 12px 0;
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 1.6;
+}
+
+.nqueens-board {
+    display: grid;
+    grid-template-columns: repeat(var(--board-size), minmax(0, 1fr));
+    width: min(100%, 440px);
+    aspect-ratio: 1;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    margin: 16px auto;
+}
+
+.nqueens-square {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    aspect-ratio: 1;
+    font-size: clamp(16px, 4vw, 34px);
+}
+
+.nqueens-square.light {
+    background: #f0e6d2;
+    color: #252525;
+}
+
+.nqueens-square.dark {
+    background: #78916f;
+    color: #fff;
+}
+
+.nqueens-queen {
+    line-height: 1;
+}
+
+.nqueens-raw-result {
+    margin-top: 16px;
+    padding: 12px;
+    max-width: 100%;
+    overflow: auto;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--bg);
+    color: var(--text);
+    font-size: 11px;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+@media (max-width: 600px) {
+    .nqueens-stats {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
         /* ==========================================
            RESPONSIVE
         ========================================== */
@@ -786,15 +938,14 @@
                         </label>
 
 
-                        <select
-                            id="workload"
-                            disabled
-                        >
-
-                            <option value="mandelbrot">
-                                Mandelbrot
-                            </option>
-
+                      
+                        <select id="workload" name="workload">
+                            <option value="mandelbrot">Mandelbrot</option>
+                            <option value="nqueens">N-Queens</option>
+                            <option value="sat">SAT</option>
+                            <option value="sat_batch">SAT Batch</option>
+                            <option value="compression">Compression</option>
+                            <option value="regex">Regex</option>
                         </select>
 
 
@@ -802,12 +953,47 @@
 
 
                 </div>
+                
+<!-- N-QUEENS OPTIONS -->
+
+<div id="nQueensOptions" class="form-section workload-option" data-workload="nqueens" hidden>
+
+    <div class="form-section-title">
+        N-Queens Options
+    </div>
+
+    <div class="form-group">
+        <label for="queensN">Board Size (N)</label>
+        <input
+            id="queensN"
+            type="number"
+            min="4"
+            max="14"
+            value="8"
+            required
+        >
+    </div>
+
+    <div class="form-group">
+        <label for="splitDepth">Split Depth</label>
+        <input
+            id="splitDepth"
+            type="number"
+            min="1"
+            max="6"
+            value="2"
+            required
+        >
+    </div>
+
+</div>
 
 
 
-                <!-- OUTPUT SIZE -->
 
-                <div class="form-section">
+                <!-- OUTPUT SIZE (Mandelbrot) -->
+
+                <div class="form-section workload-option" data-workload="mandelbrot">
 
 
                     <div class="form-section-title">
@@ -855,9 +1041,9 @@
 
 
 
-                <!-- COMPUTATION -->
+                <!-- COMPUTATION (Mandelbrot) -->
 
-                <div class="form-section">
+                <div class="form-section workload-option" data-workload="mandelbrot">
 
 
                     <div class="form-section-title">
@@ -905,9 +1091,9 @@
 
 
 
-                <!-- COORDINATE RANGE -->
+                <!-- COORDINATE RANGE (Mandelbrot) -->
 
-                <div class="form-section">
+                <div class="form-section workload-option" data-workload="mandelbrot">
 
 
                     <div class="form-section-title">
@@ -984,6 +1170,267 @@
 
                     </div>
 
+
+                </div>
+
+
+
+                <!-- ======================================
+                     SAT OPTIONS
+                ======================================= -->
+
+                <div class="form-section workload-option" data-workload="sat" hidden>
+
+                    <div class="form-section-title">
+                        SAT Options
+                    </div>
+
+                    <div class="two-column">
+
+                        <div class="form-group">
+                            <label for="satNumVariables">Number of Variables</label>
+                            <input id="satNumVariables" type="number" min="1" value="3">
+                        </div>
+
+                        <div class="form-group">
+                            <label for="satSplitDepth">Split Depth</label>
+                            <input id="satSplitDepth" type="number" min="0" value="2">
+                        </div>
+
+                    </div>
+
+                    <div class="form-group">
+                        <label for="satClauses">Clauses</label>
+                        <textarea id="satClauses">1 2
+-1 3
+-2 -3</textarea>
+                        <div class="field-hint">
+                            One clause per line. Numbers are variables, minus means NOT.
+                            Example: "1 -2" means (x1 OR NOT x2).
+                        </div>
+                    </div>
+
+                </div>
+
+
+
+                <!-- ======================================
+                     SAT BATCH OPTIONS
+                ======================================= -->
+
+                <div class="form-section workload-option" data-workload="sat_batch" hidden>
+
+                    <div class="form-section-title">
+                        SAT Batch Options
+                    </div>
+
+                    <div class="form-group">
+                        <label for="satBatchSource">Instances</label>
+                        <select id="satBatchSource" class="source-select">
+                            <option value="random">Random 3-SAT</option>
+                            <option value="custom">My own instances</option>
+                        </select>
+                    </div>
+
+                    <!-- Random 3-SAT -->
+                    <div data-source-of="satBatchSource" data-source="random">
+                        <div class="two-column">
+
+                            <div class="form-group">
+                                <label for="satBatchCount">Number of Instances</label>
+                                <input id="satBatchCount" type="number" min="1" max="10000" value="50">
+                            </div>
+
+                            <div class="form-group">
+                                <label for="satBatchVariables">Variables per Instance</label>
+                                <input id="satBatchVariables" type="number" min="3" value="30">
+                            </div>
+
+                            <div class="form-group">
+                                <label for="satBatchClauses">Clauses per Instance</label>
+                                <input id="satBatchClauses" type="number" min="1" value="128">
+                            </div>
+
+                            <div class="form-group">
+                                <label for="satBatchSeed">Seed</label>
+                                <input id="satBatchSeed" type="number" value="1">
+                            </div>
+
+                        </div>
+                    </div>
+
+                    <!-- Own instances -->
+                    <div data-source-of="satBatchSource" data-source="custom" hidden>
+                        <div class="form-group">
+                            <label for="satBatchInstances">Your Instances</label>
+                            <textarea id="satBatchInstances">1 2
+
+1
+-1
+
+1 2
+-1 3
+-2 -3</textarea>
+                            <div class="field-hint">
+                                One clause per line. Leave an empty line between instances.
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+
+
+
+                <!-- ======================================
+                     COMPRESSION OPTIONS
+                ======================================= -->
+
+                <div class="form-section workload-option" data-workload="compression" hidden>
+
+                    <div class="form-section-title">
+                        Compression Options
+                    </div>
+
+                    <div class="form-group">
+                        <label for="compressionSource">Data</label>
+                        <select id="compressionSource" class="source-select">
+                            <option value="generated">Generated test data</option>
+                            <option value="upload">Upload a file</option>
+                        </select>
+                    </div>
+
+                    <!-- Generated data -->
+                    <div data-source-of="compressionSource" data-source="generated">
+                        <div class="two-column">
+
+                            <div class="form-group">
+                                <label for="compressionSize">Data Size (KB)</label>
+                                <input id="compressionSize" type="number" min="1" max="65536" value="4096">
+                            </div>
+
+                            <div class="form-group">
+                                <label for="compressionSeed">Seed</label>
+                                <input id="compressionSeed" type="number" value="0">
+                            </div>
+
+                        </div>
+                    </div>
+
+                    <!-- Upload -->
+                    <div data-source-of="compressionSource" data-source="upload" hidden>
+                        <div class="form-group">
+                            <label for="compressionFile">File (max 64 MB)</label>
+                            <input id="compressionFile" type="file">
+                        </div>
+                    </div>
+
+                    <div class="two-column">
+
+                        <div class="form-group">
+                            <label for="compressionChunkSize">Chunk Size (KB)</label>
+                            <input id="compressionChunkSize" type="number" min="1" value="256">
+                        </div>
+
+                        <div class="form-group">
+                            <label for="compressionVariants">Algorithms</label>
+                            <select id="compressionVariants">
+                                <option value="lz4,zstd-fastest">LZ4 + Zstandard</option>
+                                <option value="lz4">LZ4 only</option>
+                                <option value="zstd-fastest">Zstandard only</option>
+                            </select>
+                        </div>
+
+                    </div>
+
+                </div>
+
+
+
+                <!-- ======================================
+                     REGEX OPTIONS
+                ======================================= -->
+
+                <div class="form-section workload-option" data-workload="regex" hidden>
+
+                    <div class="form-section-title">
+                        Regex Options
+                    </div>
+
+                    <div class="form-group">
+                        <label for="regexPatterns">Patterns</label>
+                        <textarea id="regexPatterns">[a-f]+z
+q.*x</textarea>
+                        <div class="field-hint">
+                            One pattern per line.
+                        </div>
+                    </div>
+
+                    <div class="two-column">
+
+                        <div class="form-group">
+                            <label for="regexMode">Mode</label>
+                            <select id="regexMode">
+                                <option value="match">Match (yes / no)</option>
+                                <option value="scan">Scan (count all)</option>
+                            </select>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="regexTextsPerTask">Texts per Task</label>
+                            <input id="regexTextsPerTask" type="number" min="1" value="250">
+                        </div>
+
+                    </div>
+
+                    <div class="form-group">
+                        <label for="regexSource">Texts</label>
+                        <select id="regexSource" class="source-select">
+                            <option value="random">Random texts</option>
+                            <option value="custom">My own texts</option>
+                        </select>
+                    </div>
+
+                    <!-- Random texts -->
+                    <div data-source-of="regexSource" data-source="random">
+                        <div class="two-column">
+
+                            <div class="form-group">
+                                <label for="regexCount">Number of Texts</label>
+                                <input id="regexCount" type="number" min="1" max="1000000" value="5000">
+                            </div>
+
+                            <div class="form-group">
+                                <label for="regexSeed">Seed</label>
+                                <input id="regexSeed" type="number" value="1">
+                            </div>
+
+                            <div class="form-group">
+                                <label for="regexMinLength">Min Length</label>
+                                <input id="regexMinLength" type="number" min="0" value="20">
+                            </div>
+
+                            <div class="form-group">
+                                <label for="regexMaxLength">Max Length</label>
+                                <input id="regexMaxLength" type="number" min="0" value="400">
+                            </div>
+
+                        </div>
+                    </div>
+
+                    <!-- Own texts -->
+                    <div data-source-of="regexSource" data-source="custom" hidden>
+                        <div class="form-group">
+                            <label for="regexTexts">Your Texts</label>
+                            <textarea id="regexTexts">aaa
+123
+abc
+45
+aab</textarea>
+                            <div class="field-hint">
+                                One text per line.
+                            </div>
+                        </div>
+                    </div>
 
                 </div>
 
@@ -1183,19 +1630,29 @@
                     </h3>
 
 
-                    <div class="result-preview">
+                    
+<div
+    id="resultPreviewLabel"
+    class="result-preview-label"
+>
+    Mandelbrot Output
+</div>
 
+<!-- MANDELBROT RESULT -->
 
-                        <div class="result-preview-label">
-                            Mandelbrot Output
-                        </div>
+<img
+    id="resultImage"
+    class="result-image"
+    alt="Mandelbrot computation result"
+>
 
+<!-- N-QUEENS RESULT -->
 
-                        <img
-                            id="resultImage"
-                            class="result-image"
-                            alt="Mandelbrot computation result"
-                        >
+<div id="nQueensResult" hidden></div>
+
+<div id="nQueensStats" hidden></div>
+
+<pre id="nQueensRawResult" hidden></pre>
 
 
                     </div>

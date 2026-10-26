@@ -402,11 +402,39 @@ async def get(job_id: UUID):
     }
 
 
+# What the jobs page shows for each task state.
+TASK_STATUS_LABELS = {
+    TaskState.WAITING: "Pending",
+    TaskState.RUNNING: "Assigned",
+    TaskState.DONE: "Completed",
+    TaskState.FAILED: "Failed",
+}
+
+
+@router.get("/{job_id}/tasks")
+async def get_job_tasks(job_id: UUID):
+    """Every task of a job with its worker and status, for the jobs page."""
+    job_pcb = job_pcbs.get(str(job_id))
+    if job_pcb is None:
+        raise HTTPException(status_code=404, detail="Job not found.")
+    return {
+        "job_id": str(job_id),
+        "tasks": [
+            {
+                "task_id": task_id,
+                "worker_id": task.worker_uuid,
+                "status": TASK_STATUS_LABELS[task.state],
+            }
+            for task_id, task in sorted(job_pcb.tasks.items())
+        ],
+    }
+
+
 @router.get("/{job_id}/result")
-async def result(job_id: UUID):
+async def result(job_id: UUID, response: Response = None):
     job_id_str = str(job_id)
     if job_id_str not in aggregators:
-        return {"message": "Job not found.", "job_id": job_id}
+        raise HTTPException(status_code=404, detail="Job not found.")
     job_pcb = job_pcbs[job_id_str]
     if job_pcb.status == JobStatus.FAILED:
         return {
@@ -423,6 +451,8 @@ async def result(job_id: UUID):
             ],
         }
     if job_pcb.status != JobStatus.DONE:
+        if response is not None:
+            response.status_code = 202  # accepted, not finished (the jobs page expects this)
         return {"message": "Job is still processing.", "job_id": job_id}
     return Response(
         content=aggregators[job_id_str].get_result(),

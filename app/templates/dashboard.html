@@ -367,6 +367,115 @@
 
 
         /* =========================================
+           WORKER TREE
+           Controller -> branches -> worker boxes
+        ========================================= */
+
+        .workers-container.worker-tree {
+
+            display: flex;
+
+            justify-content: center;
+
+            align-items: flex-start;
+
+            gap: 24px;
+
+        }
+
+
+        /* One branch = a column of workers.
+           The left padding leaves room for the
+           branch line and the small tick to each box. */
+
+        .worker-branch {
+
+            flex: 0 1 146px;
+
+            min-width: 0;
+
+            display: flex;
+
+            flex-direction: column;
+
+            gap: 12px;
+
+            padding-left: 22px;
+
+        }
+
+
+        /* One worker box: only "Worker N" */
+
+        .worker-leaf {
+
+            display: flex;
+
+            align-items: center;
+
+            gap: 8px;
+
+            padding: 9px 12px;
+
+            border: 1px solid var(--border);
+
+            border-radius: 10px;
+
+            background: var(--panel-light);
+
+            color: var(--text);
+
+            font-size: 12px;
+
+            font-weight: bold;
+
+            white-space: nowrap;
+
+            cursor: pointer;
+
+            transition: 0.2s;
+
+        }
+
+
+        .worker-leaf:hover {
+
+            border-color: var(--accent);
+
+            transform: translateY(-1px);
+
+        }
+
+
+        /* Dot color shows the state (no text) */
+
+        .worker-leaf.idle .status-dot {
+            background: var(--green);
+        }
+
+        .worker-leaf.busy .status-dot {
+            background: var(--yellow);
+        }
+
+        .worker-leaf.offline .status-dot {
+            background: var(--red);
+        }
+
+        .worker-leaf.offline {
+            opacity: 0.65;
+        }
+
+
+        /* Status dot in the Worker Nodes table uses the
+           same color as its text (green / yellow / red) */
+
+        .worker-status .status-dot {
+            background: currentColor;
+        }
+
+
+
+        /* =========================================
            RESPONSIVE
         ========================================= */
 
@@ -1143,8 +1252,240 @@
 
 
     <!-- =========================================
-         CONTROLLER → WORKERS CONNECTIONS
+         CONTROLLER → WORKERS TREE LINES (NEW)
     ========================================== -->
+
+    <script>
+
+        /*
+         * Draws the tree lines:
+         *   controller -> horizontal line -> one vertical
+         *   line per branch -> small tick into each worker box.
+         *
+         * The worker boxes are made by renderWorkerTree()
+         * in dashboard.js.
+         */
+
+        const SVG_NS = "http://www.w3.org/2000/svg";
+
+
+        function addLine(group, d) {
+
+            const path =
+                document.createElementNS(SVG_NS, "path");
+
+            path.setAttribute("d", d);
+
+            group.appendChild(path);
+
+        }
+
+
+        function addDot(group, x, y) {
+
+            const dot =
+                document.createElementNS(SVG_NS, "circle");
+
+            dot.setAttribute("cx", x);
+            dot.setAttribute("cy", y);
+            dot.setAttribute("r", "3");
+            dot.setAttribute("class", "connection-node");
+
+            group.appendChild(dot);
+
+        }
+
+
+        function drawWorkerTree() {
+
+            const wrapper =
+                document.getElementById("computeGridWrapper");
+
+            const mainPath =
+                document.getElementById("mainConnectionPath");
+
+            const lines =
+                document.getElementById("workerConnectionPaths");
+
+            const workersBox =
+                document.getElementById("workersContainer");
+
+
+            if (!wrapper || !mainPath || !lines || !workersBox) {
+                return;
+            }
+
+
+            const controller =
+                wrapper.querySelector(".controller-node");
+
+            if (!controller) {
+                return;
+            }
+
+
+            // Clear old lines
+            mainPath.setAttribute("d", "");
+            lines.innerHTML = "";
+
+
+            const branches = [
+                ...workersBox.querySelectorAll(".worker-branch")
+            ].filter(branch => branch.children.length > 0);
+
+
+            // Nothing to connect
+            if (branches.length === 0) {
+                return;
+            }
+
+
+            const box =
+                wrapper.getBoundingClientRect();
+
+            const controllerRect =
+                controller.getBoundingClientRect();
+
+
+            // Controller bottom-center
+            const controllerX =
+                controllerRect.left + controllerRect.width / 2 - box.left;
+
+            const controllerY =
+                controllerRect.bottom - box.top;
+
+
+            // Horizontal line sits halfway between
+            // the controller and the branches
+            const branchTop =
+                branches[0].getBoundingClientRect().top - box.top;
+
+            const busY =
+                controllerY + Math.max(12, (branchTop - controllerY) / 2);
+
+
+            // Controller -> horizontal line
+            mainPath.setAttribute(
+                "d",
+                `M ${controllerX} ${controllerY} L ${controllerX} ${busY}`
+            );
+
+
+            let leftX = controllerX;
+            let rightX = controllerX;
+
+
+            branches.forEach(branch => {
+
+                const branchRect =
+                    branch.getBoundingClientRect();
+
+                // Branch line is 9px inside the branch's left padding
+                const trunkX =
+                    branchRect.left - box.left + 9;
+
+                leftX = Math.min(leftX, trunkX);
+                rightX = Math.max(rightX, trunkX);
+
+
+                let lastY = busY;
+
+                [...branch.children].forEach(leaf => {
+
+                    const leafRect =
+                        leaf.getBoundingClientRect();
+
+                    const leafX =
+                        leafRect.left - box.left;
+
+                    const leafY =
+                        leafRect.top + leafRect.height / 2 - box.top;
+
+                    // Small tick: branch line -> worker box
+                    addLine(
+                        lines,
+                        `M ${trunkX} ${leafY} L ${leafX} ${leafY}`
+                    );
+
+                    addDot(lines, leafX, leafY);
+
+                    lastY = leafY;
+
+                });
+
+
+                // Branch line: horizontal line -> last worker
+                addLine(
+                    lines,
+                    `M ${trunkX} ${busY} L ${trunkX} ${lastY}`
+                );
+
+            });
+
+
+            // Horizontal line across all branches
+            addLine(
+                lines,
+                `M ${leftX} ${busY} L ${rightX} ${busY}`
+            );
+
+            addDot(lines, controllerX, controllerY);
+
+        }
+
+
+        /*
+         * Redraw when workers are added/removed.
+         */
+
+        const treeObserverTarget =
+            document.getElementById("workersContainer");
+
+        if (treeObserverTarget) {
+
+            new MutationObserver(
+                () => requestAnimationFrame(drawWorkerTree)
+            ).observe(
+                treeObserverTarget,
+                { childList: true, subtree: true }
+            );
+
+        }
+
+
+        /*
+         * Redraw on resize, on load, and every second
+         * (same as the old version) to keep lines aligned.
+         */
+
+        window.addEventListener("resize", drawWorkerTree);
+
+        window.addEventListener(
+            "load",
+            () => {
+                drawWorkerTree();
+                setTimeout(drawWorkerTree, 100);
+                setTimeout(drawWorkerTree, 500);
+            }
+        );
+
+        setInterval(drawWorkerTree, 1000);
+
+    </script>
+
+
+
+    <!-- =========================================
+         CONTROLLER → WORKERS CONNECTIONS (OLD - COMMENTED OUT)
+
+         This drew one long horizontal line with every worker
+         card hanging from it. To use it again:
+           1. Delete this whole note (from the line just above
+              "CONNECTIONS (OLD" down to here) and the
+              "===== END OF OLD CONNECTION LINES =====" line
+              after the closing script tag.
+           2. Remove or comment the NEW tree script above.
+           3. Switch back to renderWorkerCards() in dashboard.js.
 
     <script>
 
@@ -1578,6 +1919,8 @@
         );
 
     </script>
+
+    ===== END OF OLD CONNECTION LINES ===== -->
 
 
 

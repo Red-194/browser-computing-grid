@@ -11,6 +11,10 @@ let heartbeatTimer = null;
 let socket = null;
 let allowReconnect = true; // the controller can turn this off (POST /disconnect/{uuid})
 
+// Tasks this tab holds right now (queued or running). More than 0 = Busy, 0 = Idle.
+let runningTasks = 0;
+let idleTimer = null;
+
 /*
  * Compute worker pool
  *
@@ -102,6 +106,7 @@ function startComputeWorker() {
             const task = message.task;
 
             entry.busy = false;
+            taskFinished();
 
             resultBuffer.push({
                 job_id: task.job_id,
@@ -127,6 +132,7 @@ function startComputeWorker() {
             );
 
             entry.busy = false;
+            taskFinished();
 
             // Tell the controller, or it waits for a timeout to notice.
             if (message.task && socket?.readyState === WebSocket.OPEN) {
@@ -201,8 +207,7 @@ function connect() {
 
     socket.onopen = () => {
 
-        document.getElementById("state").textContent =
-            "Registering...";
+        setState("Registering...", false);
 
         socket.send(JSON.stringify({
 
@@ -224,8 +229,9 @@ function connect() {
 
         if (message.type === "register_ack") {
 
-            document.getElementById("state").textContent =
-                `Connected • ${message.state}`;
+            runningTasks = 0;
+
+            setState(`Connected • ${message.state}`, false);
 
             clearInterval(heartbeatTimer);
 
@@ -255,6 +261,7 @@ function connect() {
              *
              * Queue the task for the compute worker pool.
              */
+            taskStarted();
             taskQueue.push(message.task);
             pump();
 
@@ -263,6 +270,7 @@ function connect() {
         else if (message.type === "tasks") {
 
             for (const task of message.tasks) {
+                taskStarted();
                 taskQueue.push(task);
             }
             pump();
@@ -281,16 +289,17 @@ function connect() {
         taskQueue.length = 0;
         resultBuffer.length = 0;
 
+        clearTimeout(idleTimer);
+        runningTasks = 0;
+
         if (!allowReconnect) {
 
-            document.getElementById("state").textContent =
-                "Disconnected by controller (reload to reconnect)";
+            setState("Disconnected by controller (reload to reconnect)", true);
             return;
 
         }
 
-        document.getElementById("state").textContent =
-            "Disconnected";
+        setState("Disconnected", true);
 
         setTimeout(() => {
             connect();
@@ -301,10 +310,73 @@ function connect() {
 
     socket.onerror = () => {
 
-        document.getElementById("state").textContent =
-            "Connection Error";
+        setState("Connection Error", true);
 
     };
+
+}
+
+
+/*
+ * Show the worker state.
+ * isError = true -> red badge, false -> green badge, yellow while busy.
+ */
+
+function setState(text, isError) {
+
+    const state = document.getElementById("state");
+
+    state.textContent = text;
+
+    state.parentElement.classList.toggle("disconnected", isError);
+
+    state.parentElement.classList.toggle(
+        "busy",
+        !isError && text.includes("Busy")
+    );
+
+}
+
+
+/*
+ * Busy / Idle
+ *
+ *   task arrives   -> Busy
+ *   all tasks done -> Idle, after a short pause so a very fast task
+ *                     is still visible as Busy
+ */
+
+function taskStarted() {
+
+    runningTasks++;
+
+    clearTimeout(idleTimer);
+
+    setState("Connected • Busy", false);
+
+}
+
+
+function taskFinished() {
+
+    runningTasks = Math.max(0, runningTasks - 1);
+
+    if (runningTasks > 0) {
+        return;
+    }
+
+    clearTimeout(idleTimer);
+
+    idleTimer = setTimeout(() => {
+
+        if (
+            runningTasks === 0 &&
+            socket?.readyState === WebSocket.OPEN
+        ) {
+            setState("Connected • Idle", false);
+        }
+
+    }, 1000);
 
 }
 
