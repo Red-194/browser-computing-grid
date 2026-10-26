@@ -3,6 +3,8 @@ from uuid import UUID, uuid4
 
 from pydantic import BaseModel, Field
 
+from .jobs import RayScene
+
 class MandelbrotTaskConfig(BaseModel):
     width: int
     height: int
@@ -48,6 +50,17 @@ class NQueensTaskConfig(BaseModel):
     prefix: list[int]
 
 
+class RayTracingTaskConfig(BaseModel):
+    width: int
+    height: int
+    tile_size: int
+    row_block: int
+    col_block: int
+    samples_per_pixel: int
+    max_bounces: int
+    scene: RayScene
+
+
 TaskConfig = Annotated[
     Union[
         MandelbrotTaskConfig,
@@ -55,6 +68,7 @@ TaskConfig = Annotated[
         CompressionTaskConfig,
         RegexTaskConfig,
         NQueensTaskConfig,
+        RayTracingTaskConfig,
     ],
     Field(discriminator=None),
 ]
@@ -64,5 +78,7 @@ class Task(BaseModel):
     job_id: UUID = Field(default_factory=uuid4)
     task_id: int
     # "sat_batch" tasks are sent to workers as plain "sat" tasks.
-    workload: Literal["mandelbrot", "sat", "compression", "regex", "nqueens"]
+    workload: Literal[
+        "mandelbrot", "sat", "compression", "regex", "nqueens", "raytracing"
+    ]
     config: TaskConfig

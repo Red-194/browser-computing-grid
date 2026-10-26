@@ -63,6 +63,7 @@ the first satisfying model found (or UNSAT once every cube fails).
 | `compression` | ✅ (`CompressionConfig` / `CompressionTaskConfig`) | ✅ | ✅ (LZ4, Zstandard) | ✅ | **Requires rebuilt WASM runtime** |
 | `regex` | ✅ (`RegexConfig` / `RegexTaskConfig`) | ✅ | ✅ (`fancy-regex`) | ✅ | **Requires rebuilt WASM runtime** |
 | `nqueens` | ✅ (`NQueensConfig` / `NQueensTaskConfig`) | ✅ | ✅ | ✅ | **Requires rebuilt WASM runtime** |
+| `raytracing` | ✅ (`RayTracingConfig` / `RayTracingTaskConfig`) | ✅ | ✅ | ✅ | **CPU 3D ray tracer; returns PNG + per-tile work counters** |
 
 Other workloads (e.g. Monte Carlo, matrix multiplication) are **not currently implemented**. The extension points that would let a future workload be added without redesigning the pipeline are described in [docs/architecture.md](docs/architecture.md).
 
@@ -113,7 +114,7 @@ pip install -r requirements.txt
 ### Start the controller
 
 ```bash
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000 --ws-max-size 536870912
 ```
 
 ### Connect a browser worker
@@ -230,6 +231,22 @@ curl -X POST http://127.0.0.1:8000/jobs -H "Content-Type: application/json" -d '
 }'
 ```
 
+**`raytracing`** - renders a deterministic 3D sphere scene into a tiled 2D PNG.
+The default scene includes a ground sphere, colored and reflective spheres, and
+two lights. Resolution, tile size, samples per pixel, and bounce depth can be
+set in `config`:
+
+```bash
+curl -X POST http://127.0.0.1:8000/jobs -H "Content-Type: application/json" -d '{
+  "workload": "raytracing",
+  "config": {"width": 640, "height": 480, "tile_size": 64,
+              "samples_per_pixel": 2, "max_bounces": 2}
+}'
+```
+
+Retrieve the PNG with `/jobs/<job_id>/result`; `/jobs/<job_id>/stats` returns
+per-tile estimated cost, ray counts, sphere tests, and worker execution time.
+
 Every result also shows execution times, which come from the worker's own
 `execution_time_ms`.
 
@@ -239,7 +256,7 @@ Every result also shows execution times, which come from the worker's own
 curl http://127.0.0.1:8000/jobs/<job_id>/result --output result.png
 ```
 
-Returns the aggregator's result (`image/png` for Mandelbrot) once the job is complete; otherwise returns a "still processing" message.
+Returns the aggregator's result (`image/png` for Mandelbrot and ray tracing) once the job is complete; otherwise returns a "still processing" message.
 
 ### Run tests
 
@@ -257,7 +274,7 @@ See [docs/commands.md](docs/commands.md) for the full command reference, includi
 ## Project status
 
 - **Controller lifecycle** (worker registration, heartbeat, latency, disconnect/remove, dashboard) — complete and working. `POST /disconnect/{uuid}` tells the tab not to reconnect (add `?reconnect=true` for a blip that reconnects).
-- **Job pipeline** (submit → validate → split → schedule → dispatch → execute → aggregate → generic result) — working for all six workloads (Mandelbrot, SAT, `sat_batch`, compression, regex, N-Queens).
+- **Job pipeline** (submit → validate → split → schedule → dispatch → execute → aggregate → generic result) — working for all workloads (Mandelbrot, SAT, `sat_batch`, compression, regex, N-Queens, ray tracing).
 - **Fault tolerance** — numbered task attempts, requeue when a worker disconnects, misses its heartbeat, times out or reports an error, and stale answers kept for comparison. Tested live by closing a worker mid-job.
 - **Scheduler** — five algorithms (`random`, `round_robin`, `fastest_first`, `boinc`, `ucb`) chosen at start-up or switched live, with measured per-worker speed, adaptive queue sizes, adaptive timeouts and work stealing. The default is still `random`. See [docs/project_context.md](docs/project_context.md) for the live results and open items.
 - **Speed** — each tab runs a pool of compute threads (`min(cores − 1, 8)`; open `/worker?threads=N` to change it), and tasks and results travel in batches. On the test jobs this was roughly 5× to 70× faster than a single-thread tab with one message per task.

@@ -292,7 +292,14 @@ async def websocket_endpoint(websocket: WebSocket):
                     str(raw.get("error", "task failed")),
                 )
 
-    except WebSocketDisconnect:
+    except WebSocketDisconnect as error:
+
+        logger.info(
+            "Worker WebSocket closed: %s (code=%s reason=%r)",
+            worker_uuid,
+            error.code,
+            error.reason,
+        )
 
         if worker_uuid is not None:
             await handle_socket_closed(worker_uuid, websocket)

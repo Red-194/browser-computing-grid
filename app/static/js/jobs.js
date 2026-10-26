@@ -115,6 +115,7 @@ updateWorkloadFields();
 const WORKLOAD_NAMES = {
     mandelbrot: "Mandelbrot",
     nqueens: "N-Queens",
+    raytracing: "3D Ray Tracing",
     sat: "SAT",
     sat_batch: "SAT Batch",
     compression: "Compression",
@@ -311,6 +312,19 @@ function clausesAreValid(clauses, numVariables) {
 
 // Build the payload sent to the actual backend.
 function buildPayload(workload) {
+    if (workload === "raytracing") {
+        return {
+            workload: "raytracing",
+            config: {
+                width: numberValue("rayWidth"),
+                height: numberValue("rayHeight"),
+                tile_size: numberValue("rayTileSize"),
+                samples_per_pixel: numberValue("raySamples"),
+                max_bounces: numberValue("rayBounces")
+            }
+        };
+    }
+
     if (workload === "sat") {
         return {
             workload: "sat",
@@ -451,6 +465,22 @@ function isWhole(value, min, max = Infinity) {
 // Validate user inputs before submitting.
 function validatePayload(payload) {
     const config = payload.config;
+
+    if (payload.workload === "raytracing") {
+        if (!isWhole(config.width, 1) || !isWhole(config.height, 1)) {
+            return fail("Ray-tracing dimensions must be positive whole numbers.");
+        }
+        if (!isWhole(config.tile_size, 1)) {
+            return fail("Tile size must be a positive whole number.");
+        }
+        if (!isWhole(config.samples_per_pixel, 1)) {
+            return fail("Samples per pixel must be a positive whole number.");
+        }
+        if (!isWhole(config.max_bounces, 0)) {
+            return fail("Maximum reflection bounces must be a non-negative whole number.");
+        }
+        return true;
+    }
 
     if (payload.workload === "sat") {
         if (!isWhole(config.num_variables, 1)) {
@@ -885,7 +915,7 @@ async function checkJobResult() {
         const contentType =
             response.headers.get("content-type") || "";
 
-        // The backend may return an image directly for Mandelbrot.
+        // Image-producing workloads return the aggregator's PNG directly.
         if (contentType.includes("image/png")) {
             if (!response.ok) {
                 throw new Error("Could not retrieve the image result.");
@@ -908,8 +938,22 @@ async function checkJobResult() {
             nQueensResult.hidden = true;
             resultArea.classList.add("visible");
 
+            if (currentWorkload === "raytracing") {
+                try {
+                    const statsResponse = await fetch(
+                        `/jobs/${encodeURIComponent(jobId)}/stats`,
+                        { cache: "no-store" }
+                    );
+                    if (statsResponse.ok) {
+                        renderRayTracingStats(await statsResponse.json());
+                    }
+                } catch (statsError) {
+                    console.warn("Could not load ray-tracing work statistics:", statsError);
+                }
+            }
+
             finishJob();
-            setJobStatus("Mandelbrot job completed.", "success");
+            setJobStatus(`${WORKLOAD_NAMES[currentWorkload]} job completed.`, "success");
             return;
         }
 
@@ -1016,6 +1060,43 @@ async function checkJobResult() {
             );
         }
     }
+}
+
+function renderRayTracingStats(stats) {
+    const totals = stats.totals || {};
+    const estimatedWork = (stats.tiles || []).reduce(
+        (sum, tile) => sum + Number(tile.estimated_cost || 0),
+        0
+    );
+    const cards = [
+        ["Primary Rays", totals.primary_rays],
+        ["Total Rays", totals.total_rays],
+        ["Sphere Tests", totals.sphere_tests],
+        ["Shadow Rays", totals.shadow_rays],
+        ["Reflection Rays", totals.reflection_rays],
+        ["Estimated Work Units", estimatedWork],
+        ["Actual Work Units", totals.actual_work_units]
+    ];
+
+    nQueensStats.innerHTML = "";
+    nQueensStats.classList.add("nqueens-stats");
+    nQueensStats.hidden = false;
+    cards.forEach(([label, value]) => {
+        const card = document.createElement("div");
+        card.className = "nqueens-stat";
+        const heading = document.createElement("span");
+        heading.className = "nqueens-stat-label";
+        heading.textContent = label;
+        const number = document.createElement("strong");
+        number.className = "nqueens-stat-value";
+        number.textContent = Number(value || 0).toLocaleString();
+        card.append(heading, number);
+        nQueensStats.appendChild(card);
+    });
+
+    nQueensRawResult.textContent = JSON.stringify(stats, null, 2);
+    nQueensRawResult.classList.add("nqueens-raw-result");
+    nQueensRawResult.hidden = false;
 }
 
 // Render the N-Queens statistics and raw result.

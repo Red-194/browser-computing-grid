@@ -34,7 +34,7 @@ wasm-bindgen --target web --out-dir pkg --out-name runtime \
 ### Start the Python Server
 Run this from the root directory of the project to start the server:
 ```bash
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000 --ws-max-size 536870912
 ```
 
 ### Force Kill All Python Servers
