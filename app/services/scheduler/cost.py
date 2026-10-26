@@ -8,6 +8,7 @@ Where the size of a task cannot be known before running it, the cost is 1, so
 the speed estimate becomes "seconds per task" and the spread of the samples
 carries the uncertainty. SAT is only partly knowable: see `_sat`.
 """
+import hashlib
 import math
 import random
 
@@ -58,14 +59,329 @@ def _mandelbrot(config) -> float:
     return pixels * total / (MANDELBROT_SAMPLES * MANDELBROT_SAMPLES)
 
 
-def _nqueens(config) -> float:
-    """Search nodes under the fixed prefix, from a curve fitted to measured counts
-    (about 490 nodes with 8 rows left, 5 million with 14, 68 million with 15).
-    Right to within a factor of two or so, which is enough: what matters is that a
-    task with the whole board left costs thousands of times a nearly finished one."""
-    rows_left = max(0, config.n - len(config.prefix))
-    return math.exp(0.341 * rows_left + 0.0542 * rows_left * rows_left)
+# Ray tracing: sample a small, fixed grid of camera rays through each tile and
+# follow the same sphere/shadow/reflection decisions as the Rust kernel. Scale
+# those observed operations to the whole tile and samples-per-pixel count.
+RAYTRACING_COST_SAMPLES = 4
+RAY_EPSILON = 1e-4
 
+
+def _rt_add(a, b):
+    return (a[0] + b[0], a[1] + b[1], a[2] + b[2])
+
+
+def _rt_sub(a, b):
+    return (a[0] - b[0], a[1] - b[1], a[2] - b[2])
+
+
+def _rt_scale(v, amount):
+    return (v[0] * amount, v[1] * amount, v[2] * amount)
+
+
+def _rt_dot(a, b):
+    return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
+
+
+def _rt_normalize(v):
+    length = math.sqrt(_rt_dot(v, v))
+    if length <= 1e-15:
+        return (0.0, 0.0, 0.0)
+    return _rt_scale(v, 1.0 / length)
+
+
+def _rt_cross(a, b):
+    return (
+        a[1] * b[2] - a[2] * b[1],
+        a[2] * b[0] - a[0] * b[2],
+        a[0] * b[1] - a[1] * b[0],
+    )
+
+
+def _rt_hit(origin, direction, sphere, minimum=RAY_EPSILON, maximum=math.inf):
+    offset = _rt_sub(origin, sphere.center)
+    half_b = _rt_dot(offset, direction)
+    c = _rt_dot(offset, offset) - sphere.radius * sphere.radius
+    discriminant = half_b * half_b - c
+    if discriminant < 0.0:
+        return None
+    root = math.sqrt(discriminant)
+    distance = -half_b - root
+    if distance <= minimum or distance >= maximum:
+        distance = -half_b + root
+        if distance <= minimum or distance >= maximum:
+            return None
+    point = _rt_add(origin, _rt_scale(direction, distance))
+    normal = _rt_normalize(_rt_sub(point, sphere.center))
+    return distance, point, normal
+
+
+def _rt_trace_cost(origin, direction, scene, depth, max_bounces):
+    """Count approximate renderer operations for one primary/secondary ray."""
+    counters = {"rays": 1, "sphere_tests": 0, "light_samples": 0}
+    nearest = None
+    nearest_index = -1
+    closest = math.inf
+    for index, sphere in enumerate(scene.spheres):
+        counters["sphere_tests"] += 1
+        hit = _rt_hit(origin, direction, sphere, maximum=closest)
+        if hit is not None:
+            closest = hit[0]
+            nearest = hit
+            nearest_index = index
+
+    if nearest is None:
+        return counters
+
+    _, point, normal = nearest
+    sphere = scene.spheres[nearest_index]
+    for light in scene.lights:
+        to_light = _rt_sub(light.position, point)
+        light_distance = math.sqrt(_rt_dot(to_light, to_light))
+        if light_distance <= RAY_EPSILON:
+            continue
+        light_direction = _rt_scale(to_light, 1.0 / light_distance)
+        if _rt_dot(normal, light_direction) <= 0.0:
+            continue
+        counters["light_samples"] += 1
+        shadow_origin = _rt_add(point, _rt_scale(normal, RAY_EPSILON))
+        counters["rays"] += 1
+        for index, other in enumerate(scene.spheres):
+            if index == nearest_index:
+                continue
+            counters["sphere_tests"] += 1
+            if _rt_hit(
+                shadow_origin,
+                light_direction,
+                other,
+                maximum=light_distance - RAY_EPSILON,
+            ) is not None:
+                break
+
+    if sphere.reflectivity > 0.0 and depth < max_bounces:
+        reflected = _rt_sub(
+            direction,
+            _rt_scale(normal, 2.0 * _rt_dot(direction, normal)),
+        )
+        child = _rt_trace_cost(
+            _rt_add(point, _rt_scale(normal, RAY_EPSILON)),
+            _rt_normalize(reflected),
+            scene,
+            depth + 1,
+            max_bounces,
+        )
+        for key, value in child.items():
+            counters[key] += value
+    return counters
+
+
+def _raytracing(config) -> float:
+    start_x = config.col_block * config.tile_size
+    start_y = config.row_block * config.tile_size
+    tile_width = min(config.tile_size, max(0, config.width - start_x))
+    tile_height = min(config.tile_size, max(0, config.height - start_y))
+    if tile_width <= 0 or tile_height <= 0:
+        return 1.0
+
+    scene = config.scene
+    camera = scene.camera
+    forward = _rt_normalize(_rt_sub(camera.look_at, camera.position))
+    right = _rt_normalize(_rt_cross(forward, (0.0, 1.0, 0.0)))
+    if _rt_dot(right, right) <= 1e-15:
+        right = (1.0, 0.0, 0.0)
+    up = _rt_normalize(_rt_cross(right, forward))
+    half_height = math.tan(math.radians(camera.vertical_fov_degrees) * 0.5)
+    aspect = config.width / config.height
+    total = 0.0
+
+    for sample_y in range(RAYTRACING_COST_SAMPLES):
+        pixel_y = start_y + (sample_y + 0.5) * tile_height / RAYTRACING_COST_SAMPLES
+        screen_y = (1.0 - 2.0 * pixel_y / config.height) * half_height
+        for sample_x in range(RAYTRACING_COST_SAMPLES):
+            pixel_x = start_x + (sample_x + 0.5) * tile_width / RAYTRACING_COST_SAMPLES
+            screen_x = (2.0 * pixel_x / config.width - 1.0) * aspect * half_height
+            direction = _rt_normalize(
+                _rt_add(
+                    forward,
+                    _rt_add(_rt_scale(right, screen_x), _rt_scale(up, screen_y)),
+                )
+            )
+            work = _rt_trace_cost(
+                camera.position, direction, scene, depth=0, max_bounces=config.max_bounces
+            )
+            # These are deterministic estimated work units, not milliseconds.
+            total += work["rays"] + work["sphere_tests"] + work["light_samples"]
+
+    sample_count = RAYTRACING_COST_SAMPLES ** 2
+    return max(
+        1.0,
+        total / sample_count * tile_width * tile_height * config.samples_per_pixel,
+    )
+
+NQUEENS_EXACT_DEPTH = 2
+NQUEENS_PROBES_PER_FRONTIER = 16
+
+def _nqueens_state(config):
+    """Convert an N-Queens prefix into the board state used by the solver."""
+    n = config.n
+
+    if n <= 0 or n > 32:
+        return None
+
+    full = (1 << n) - 1
+
+    cols = 0
+    diag1 = 0
+    diag2 = 0
+
+    for col in config.prefix:
+        if col < 0 or col >= n:
+            return None
+
+        bit = 1 << col
+
+        if bit & (cols | diag1 | diag2):
+            return None
+
+        cols |= bit
+        diag1 = ((diag1 | bit) << 1) & full
+        diag2 = ((diag2 | bit) >> 1)
+
+    return full, cols, diag1, diag2
+
+
+def _nqueens_children(state):
+    """Generate all legal next states."""
+    full, cols, diag1, diag2 = state
+
+    free = full & ~(cols | diag1 | diag2)
+
+    children = []
+
+    while free:
+        bit = free & -free
+        free ^= bit
+
+        children.append(
+            (
+                full,
+                cols | bit,
+                ((diag1 | bit) << 1) & full,
+                (diag2 | bit) >> 1,
+            )
+        )
+
+    return children
+
+
+def _knuth_probe(state, rng):
+    """
+    Estimate the remaining search-tree size by following
+    one random root-to-leaf path.
+    """
+    total = 0.0
+    path_count = 1.0
+    current = state
+
+    while True:
+        children = _nqueens_children(current)
+
+        if not children:
+            return total
+
+        path_count *= len(children)
+        total += path_count
+
+        current = rng.choice(children)
+
+
+def _nqueens_partial_backtrack(
+    state,
+    exact_depth=NQUEENS_EXACT_DEPTH,
+    probes=NQUEENS_PROBES_PER_FRONTIER,
+    rng=None,
+):
+    """
+    Explore the first few levels exactly, then estimate each
+    resulting subtree using Knuth probes.
+    """
+    if rng is None:
+        rng = random.Random(0)
+
+    frontier = [state]
+    exact_nodes = 0
+
+    # Explore the first levels exactly.
+    for _ in range(exact_depth):
+        next_frontier = []
+
+        for node in frontier:
+            children = _nqueens_children(node)
+
+            exact_nodes += len(children)
+            next_frontier.extend(children)
+
+        frontier = next_frontier
+
+        if not frontier:
+            return float(exact_nodes)
+
+    # Estimate every remaining subtree independently.
+    estimated = float(exact_nodes)
+
+    for node in frontier:
+        samples = [
+            _knuth_probe(node, rng)
+            for _ in range(probes)
+        ]
+
+        estimated += sum(samples) / len(samples)
+
+    return estimated
+
+
+def _nqueens(config):
+    """
+    Estimate N-Queens work from the actual prefix/search-tree state.
+
+    The estimate is expressed in search nodes, matching the `nodes`
+    counter produced by the Rust N-Queens kernel.
+    """
+    state = _nqueens_state(config)
+
+    if state is None:
+        return 1.0
+
+    rows_left = config.n - len(config.prefix)
+
+    if rows_left <= 0:
+        return 1.0
+
+    # Deterministic seed for this particular N-Queens task.
+    seed_material = (
+        f"{config.n}:{','.join(map(str, config.prefix))}"
+    ).encode()
+
+    seed = int.from_bytes(
+        hashlib.sha256(seed_material).digest()[:8],
+        "big",
+    )
+
+    rng = random.Random(seed)
+
+    exact_depth = min(
+        NQUEENS_EXACT_DEPTH,
+        rows_left,
+    )
+
+    return max(
+        1.0,
+        _nqueens_partial_backtrack(
+            state,
+            exact_depth=exact_depth,
+            probes=NQUEENS_PROBES_PER_FRONTIER,
+            rng=rng,
+        ),
+    )
 
 # SAT: the kernel is plain DPLL, so a task's time is the number of clause visits,
 # and that depends on the formula far more than on its size. Fitted on 1,050
@@ -167,6 +483,7 @@ _ESTIMATORS = {
     "regex": _regex,
     "mandelbrot": _mandelbrot,
     "nqueens": _nqueens,
+    "raytracing": _raytracing,
     "sat": _sat,
 }
 

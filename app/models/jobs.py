@@ -213,6 +213,102 @@ class NQueensJob(BaseModel):
     config: NQueensConfig
 
 
+# ---------------------------------------------------------------------------
+# 3D CPU ray tracing, rendered into independent 2D image tiles
+# ---------------------------------------------------------------------------
+
+
+RayVec3 = tuple[float, float, float]
+
+
+class RayCamera(BaseModel):
+    position: RayVec3 = (0.0, 1.0, 6.5)
+    look_at: RayVec3 = (0.0, 0.25, -1.0)
+    vertical_fov_degrees: float = Field(default=42.0, gt=1.0, lt=179.0)
+
+    @model_validator(mode="after")
+    def validate_direction(self):
+        if self.position == self.look_at:
+            raise ValueError("camera position and look_at must differ")
+        return self
+
+
+class RaySphere(BaseModel):
+    center: RayVec3
+    radius: float = Field(gt=0.0)
+    color: RayVec3
+    reflectivity: float = Field(default=0.0, ge=0.0, le=1.0)
+
+    @model_validator(mode="after")
+    def validate_color(self):
+        if any(channel < 0.0 or channel > 1.0 for channel in self.color):
+            raise ValueError("sphere color channels must be between 0 and 1")
+        return self
+
+
+class RayLight(BaseModel):
+    position: RayVec3
+    color: RayVec3 = (1.0, 1.0, 1.0)
+    intensity: float = Field(default=1.0, gt=0.0)
+
+    @model_validator(mode="after")
+    def validate_color(self):
+        if any(channel < 0.0 or channel > 1.0 for channel in self.color):
+            raise ValueError("light color channels must be between 0 and 1")
+        return self
+
+
+class RayScene(BaseModel):
+    camera: RayCamera = Field(default_factory=RayCamera)
+    spheres: list[RaySphere] = Field(default_factory=list)
+    lights: list[RayLight] = Field(default_factory=list)
+    background: RayVec3 = (0.58, 0.72, 0.95)
+
+    @model_validator(mode="after")
+    def validate_background(self):
+        if any(channel < 0.0 or channel > 1.0 for channel in self.background):
+            raise ValueError("background color channels must be between 0 and 1")
+        return self
+
+
+def benchmark_ray_scene() -> RayScene:
+    """A sky, floor, lit objects, and a reflective sphere for varied tile cost."""
+    return RayScene(
+        spheres=[
+            # A large sphere acts as a simple ground plane.
+            RaySphere(center=(0.0, -1001.0, -1.0), radius=1000.0,
+                      color=(0.72, 0.72, 0.68), reflectivity=0.04),
+            RaySphere(center=(-1.55, 0.0, -1.25), radius=0.85,
+                      color=(0.88, 0.16, 0.10), reflectivity=0.08),
+            RaySphere(center=(0.0, 0.0, -1.5), radius=0.82,
+                      color=(0.10, 0.28, 0.82), reflectivity=0.18),
+            RaySphere(center=(1.55, 0.0, -1.25), radius=0.85,
+                      color=(0.82, 0.78, 0.68), reflectivity=0.82),
+            RaySphere(center=(-0.35, -0.43, 0.05), radius=0.42,
+                      color=(0.12, 0.62, 0.22), reflectivity=0.05),
+        ],
+        lights=[
+            RayLight(position=(-3.5, 5.0, 3.5), intensity=42.0),
+            RayLight(position=(4.0, 3.0, -0.5), color=(0.72, 0.82, 1.0), intensity=24.0),
+        ],
+    )
+
+
+class RayTracingConfig(BaseModel):
+    width: int = Field(default=640, gt=0)
+    height: int = Field(default=480, gt=0)
+    tile_size: int = Field(default=64, gt=0)
+    samples_per_pixel: int = Field(default=2, ge=1)
+    max_bounces: int = Field(default=2, ge=0)
+    scene: RayScene = Field(default_factory=benchmark_ray_scene)
+
+
+class RayTracingJob(BaseModel):
+    job_id: UUID | None = None
+    workload: Literal["raytracing"]
+    config: RayTracingConfig
+
+
 # Config class for each workload name. Add new workloads here.
 WORKLOAD_CONFIGS = {
     "mandelbrot": MandelbrotConfig,
@@ -221,6 +317,7 @@ WORKLOAD_CONFIGS = {
     "compression": CompressionConfig,
     "regex": RegexConfig,
     "nqueens": NQueensConfig,
+    "raytracing": RayTracingConfig,
 }
 
 
@@ -233,7 +330,8 @@ class JobSubmission(BaseModel):
 
     job_id: UUID | None = None
     workload: Literal[
-        "mandelbrot", "sat", "sat_batch", "compression", "regex", "nqueens"
+        "mandelbrot", "sat", "sat_batch", "compression", "regex", "nqueens",
+        "raytracing",
     ]
     config: Union[
         MandelbrotConfig,
@@ -242,6 +340,7 @@ class JobSubmission(BaseModel):
         CompressionConfig,
         RegexConfig,
         NQueensConfig,
+        RayTracingConfig,
     ]
 
     @model_validator(mode="before")

@@ -942,6 +942,7 @@
                         <select id="workload" name="workload">
                             <option value="mandelbrot">Mandelbrot</option>
                             <option value="nqueens">N-Queens</option>
+                            <option value="raytracing">3D Ray Tracing</option>
                             <option value="sat">SAT</option>
                             <option value="sat_batch">SAT Batch</option>
                             <option value="compression">Compression</option>
@@ -986,6 +987,38 @@
         >
     </div>
 
+</div>
+
+
+<!-- RAY TRACING OPTIONS -->
+
+<div class="form-section workload-option" data-workload="raytracing" hidden>
+    <div class="form-section-title">3D Ray Tracing</div>
+    <div class="field-hint">
+        Render the built-in benchmark scene. The scene is 3D; the output is a tiled 2D image.
+    </div>
+    <div class="two-column">
+        <div class="form-group">
+            <label for="rayWidth">Image Width</label>
+        <input id="rayWidth" type="number" min="1" value="640" required>
+        </div>
+        <div class="form-group">
+            <label for="rayHeight">Image Height</label>
+        <input id="rayHeight" type="number" min="1" value="480" required>
+        </div>
+        <div class="form-group">
+            <label for="rayTileSize">Tile Size</label>
+        <input id="rayTileSize" type="number" min="1" value="64" required>
+        </div>
+        <div class="form-group">
+            <label for="raySamples">Samples per Pixel</label>
+        <input id="raySamples" type="number" min="1" value="2" required>
+        </div>
+        <div class="form-group">
+            <label for="rayBounces">Maximum Reflection Bounces</label>
+        <input id="rayBounces" type="number" min="0" value="2" required>
+        </div>
+    </div>
 </div>
 
 
@@ -1643,7 +1676,7 @@ aab</textarea>
 <img
     id="resultImage"
     class="result-image"
-    alt="Mandelbrot computation result"
+    alt="Rendered workload result"
 >
 
 <!-- N-QUEENS RESULT -->
@@ -1680,7 +1713,7 @@ aab</textarea>
 
 <!-- EXISTING JOB SCRIPT -->
 
-<script src="/static/js/jobs.js"></script>
+<script src="/static/js/jobs.js?v=raytracing-20261027-3"></script>
 
 
 </body>

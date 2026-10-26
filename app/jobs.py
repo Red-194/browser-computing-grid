@@ -437,6 +437,27 @@ async def get_job_tasks(job_id: UUID):
     }
 
 
+@router.get("/{job_id}/stats")
+async def get_job_work_stats(job_id: UUID):
+    """Return optional per-task work counters exposed by a workload aggregator."""
+    job_id_str = str(job_id)
+    job_pcb = job_pcbs.get(job_id_str)
+    if job_pcb is None:
+        raise HTTPException(status_code=404, detail="Job not found.")
+
+    aggregator = aggregators[job_id_str]
+    get_stats = getattr(aggregator, "get_stats", None)
+    if not callable(get_stats):
+        raise HTTPException(status_code=404, detail="Work statistics are not available.")
+
+    stats = get_stats()
+    tasks = job_tasks.get(job_id_str, {})
+    for tile in stats.get("tiles", []):
+        task = tasks.get(tile["task_id"])
+        tile["estimated_cost"] = cost_of(task) if task is not None else None
+    return {"job_id": job_id_str, **stats}
+
+
 @router.get("/{job_id}/result")
 async def result(job_id: UUID, response: Response = None):
     job_id_str = str(job_id)

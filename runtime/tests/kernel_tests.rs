@@ -1,6 +1,9 @@
 use runtime::kernels::compression::{self, CompressionInput};
 use runtime::kernels::mandelbrot::{self, MandelbrotInput};
 use runtime::kernels::nqueens::{self, NQueensInput};
+use runtime::kernels::raytracing::{
+    self, RayCamera, RayLight, RayScene, RaySphere, RayTracingInput,
+};
 use runtime::kernels::regex_scan::{self, RegexInput};
 use runtime::kernels::sat::{self, SatInput};
 
@@ -72,6 +75,215 @@ fn test_mandelbrot_edge_tile() {
     assert_eq!(output.row_block, 2);
     assert_eq!(output.col_block, 2);
     assert_eq!(output.pixel_buffer.len(), 25);
+}
+
+// ---------- Ray tracing ----------
+
+fn ray_sphere(center: [f64; 3], radius: f64, color: [f64; 3], reflectivity: f64) -> RaySphere {
+    RaySphere {
+        center,
+        radius,
+        color,
+        reflectivity,
+    }
+}
+
+fn ray_input(
+    width: u32,
+    height: u32,
+    tile_size: u32,
+    row_block: u32,
+    col_block: u32,
+    samples_per_pixel: u32,
+    max_bounces: u32,
+    spheres: Vec<RaySphere>,
+    lights: Vec<RayLight>,
+    background: [f64; 3],
+) -> RayTracingInput {
+    RayTracingInput {
+        width,
+        height,
+        tile_size,
+        row_block,
+        col_block,
+        samples_per_pixel,
+        max_bounces,
+        scene: RayScene {
+            camera: RayCamera {
+                position: [0.0, 0.0, 4.0],
+                look_at: [0.0, 0.0, 0.0],
+                vertical_fov_degrees: 20.0,
+            },
+            spheres,
+            lights,
+            background,
+        },
+    }
+}
+
+fn white_light(position: [f64; 3]) -> RayLight {
+    RayLight {
+        position,
+        color: [1.0; 3],
+        intensity: 24.0,
+    }
+}
+
+#[test]
+fn test_raytracing_miss_returns_background_and_counts_primary_rays() {
+    let output = raytracing::run(ray_input(
+        1, 1, 1, 0, 0, 1, 2, vec![], vec![], [0.25, 0.5, 0.75],
+    ));
+
+    assert_eq!((output.tile_width, output.tile_height), (1, 1));
+    assert_eq!(output.pixel_buffer.len(), 3);
+    assert_eq!(output.work_stats.primary_rays, 1);
+    assert_eq!(output.work_stats.total_rays, 1);
+    assert_eq!(output.work_stats.sphere_tests, 0);
+    assert_eq!(output.work_stats.shadow_rays, 0);
+    assert_eq!(output.work_stats.reflection_rays, 0);
+    assert!(output.pixel_buffer[0] < output.pixel_buffer[1]);
+    assert!(output.pixel_buffer[1] < output.pixel_buffer[2]);
+}
+
+#[test]
+fn test_raytracing_intersects_sphere_and_uses_nearest_hit() {
+    let output = raytracing::run(ray_input(
+        1,
+        1,
+        1,
+        0,
+        0,
+        1,
+        0,
+        vec![
+            ray_sphere([0.0, 0.0, 1.0], 0.65, [0.0, 0.0, 1.0], 0.0),
+            ray_sphere([0.0, 0.0, -2.0], 0.9, [1.0, 0.0, 0.0], 0.0),
+        ],
+        vec![white_light([0.0, 0.0, 4.0])],
+        [0.0; 3],
+    ));
+
+    assert!(output.work_stats.sphere_tests >= 2);
+    assert!(output.work_stats.light_samples > 0);
+    assert!(output.pixel_buffer[2] > output.pixel_buffer[0]);
+}
+
+#[test]
+fn test_raytracing_lighting_and_shadows_change_pixel_values() {
+    let sphere = ray_sphere([0.0, 0.0, 0.0], 1.0, [1.0; 3], 0.0);
+    let unlit = raytracing::run(ray_input(
+        1, 1, 1, 0, 0, 1, 0, vec![ray_sphere([0.0, 0.0, 0.0], 1.0, [1.0; 3], 0.0)],
+        vec![], [0.0; 3],
+    ));
+    let lit = raytracing::run(ray_input(
+        1, 1, 1, 0, 0, 1, 0, vec![sphere], vec![white_light([0.0, 0.0, 4.0])], [0.0; 3],
+    ));
+    assert!(lit.pixel_buffer[0] > unlit.pixel_buffer[0]);
+
+    let shadowed = raytracing::run(ray_input(
+        1,
+        1,
+        1,
+        0,
+        0,
+        1,
+        0,
+        vec![
+            ray_sphere([0.0, 0.0, 0.0], 1.0, [1.0; 3], 0.0),
+            ray_sphere([0.95, 0.0, 2.0], 0.38, [0.1, 0.1, 0.1], 0.0),
+        ],
+        vec![white_light([2.0, 0.0, 3.0])],
+        [0.0; 3],
+    ));
+    assert!(shadowed.work_stats.shadow_rays > 0);
+    assert!(shadowed.pixel_buffer[0] < lit.pixel_buffer[0]);
+}
+
+#[test]
+fn test_raytracing_reflection_obeys_bounce_limit_and_is_deterministic() {
+    let spheres = vec![ray_sphere(
+        [0.0, 0.0, 0.0],
+        1.0,
+        [0.0, 0.1, 1.0],
+        1.0,
+    )];
+    let without_bounce = raytracing::run(ray_input(
+        1, 1, 1, 0, 0, 1, 0, spheres, vec![], [1.0, 0.0, 0.0],
+    ));
+    let with_bounce = raytracing::run(ray_input(
+        1,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        vec![ray_sphere([0.0, 0.0, 0.0], 1.0, [0.0, 0.1, 1.0], 1.0)],
+        vec![],
+        [1.0, 0.0, 0.0],
+    ));
+    let repeated = raytracing::run(ray_input(
+        1,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        vec![ray_sphere([0.0, 0.0, 0.0], 1.0, [0.0, 0.1, 1.0], 1.0)],
+        vec![],
+        [1.0, 0.0, 0.0],
+    ));
+
+    assert_eq!(without_bounce.work_stats.reflection_rays, 0);
+    assert_eq!(with_bounce.work_stats.reflection_rays, 1);
+    assert!(with_bounce.work_stats.total_rays > without_bounce.work_stats.total_rays);
+    assert_ne!(with_bounce.pixel_buffer, without_bounce.pixel_buffer);
+    assert_eq!(with_bounce.pixel_buffer, repeated.pixel_buffer);
+    assert_eq!(with_bounce.work_stats, repeated.work_stats);
+}
+
+#[test]
+fn test_raytracing_spp_and_edge_tile_dimensions_are_reported() {
+    let output = raytracing::run(ray_input(
+        3,
+        3,
+        2,
+        1,
+        1,
+        3,
+        0,
+        vec![],
+        vec![],
+        [0.2, 0.3, 0.4],
+    ));
+
+    assert_eq!((output.tile_width, output.tile_height), (1, 1));
+    assert_eq!(output.pixel_buffer.len(), 3);
+    assert_eq!(output.work_stats.primary_rays, 3);
+    assert_eq!(output.work_stats.total_rays, 3);
+}
+
+#[test]
+fn test_raytracing_accepts_tiles_over_one_megapixel() {
+    let output = raytracing::run(ray_input(
+        1024,
+        1024,
+        1024,
+        0,
+        0,
+        1,
+        0,
+        vec![],
+        vec![],
+        [0.2, 0.3, 0.4],
+    ));
+
+    assert_eq!(output.tile_width, 1024);
+    assert_eq!(output.tile_height, 1024);
+    assert_eq!(output.pixel_buffer.len(), 1024 * 1024 * 3);
+    assert_eq!(output.work_stats.primary_rays, 1024 * 1024);
 }
 
 #[test]

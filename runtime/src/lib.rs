@@ -1,6 +1,6 @@
 pub mod kernels;
 
-use kernels::{compression, mandelbrot, nqueens, regex_scan, sat};
+use kernels::{compression, mandelbrot, nqueens, raytracing, regex_scan, sat};
 use serde::{de::DeserializeOwned, Serialize};
 use wasm_bindgen::prelude::*;
 
@@ -12,6 +12,7 @@ pub fn execute_task(task_type: &str, payload: JsValue) -> Result<JsValue, JsValu
         "compression" => run_kernel("compression", payload, compression::run),
         "regex" => run_kernel("regex", payload, regex_scan::run),
         "nqueens" => run_kernel("nqueens", payload, nqueens::run),
+        "raytracing" => run_kernel("raytracing", payload, raytracing::run),
         _ => Err(JsValue::from_str(&format!("Unknown task type: {}", task_type))),
     }
 }

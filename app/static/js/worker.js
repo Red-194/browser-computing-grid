@@ -53,7 +53,15 @@ function flushResults() {
         return;
     }
 
-    const results = resultBuffer.splice(0, resultBuffer.length);
+    // Pixel results are large JSON arrays. Batching several finished image
+    // tiles can exceed Uvicorn's default 16 MiB WebSocket frame limit.
+    // Flush image tiles individually; keep batching compact workload results.
+    const imageIndex = resultBuffer.findIndex(
+        item => item.workload === "raytracing" || item.workload === "mandelbrot"
+    );
+    const results = imageIndex >= 0
+        ? resultBuffer.splice(imageIndex, 1)
+        : resultBuffer.splice(0, resultBuffer.length);
 
     if (socket?.readyState === WebSocket.OPEN) {
 
@@ -62,6 +70,10 @@ function flushResults() {
             results
         }));
 
+    }
+
+    if (resultBuffer.length > 0 && flushTimer === null) {
+        flushTimer = setTimeout(flushResults, RESULT_FLUSH_MS);
     }
 
 }
@@ -76,7 +88,7 @@ function startComputeWorker() {
 
     const entry = {
         worker: new Worker(
-            "/static/js/compute-worker.js",
+            "/static/js/compute-worker.js?v=raytracing-20261027-3",
             { type: "module" }
         ),
         ready: false,
@@ -109,6 +121,7 @@ function startComputeWorker() {
             taskFinished();
 
             resultBuffer.push({
+                workload: task.workload,
                 job_id: task.job_id,
                 task_id: task.task_id,
                 attempt: task.attempt,

@@ -230,12 +230,66 @@ def test_mandelbrot_edge_tile_is_priced_by_its_clipped_size():
 
 def test_nqueens_cost_grows_steeply_with_the_rows_left():
     def nq(n, depth):
+        # A legal prefix from the standard odd-columns-then-even-columns
+        # solution pattern. Repeating column 0 (the old fixture) made every
+        # non-empty prefix invalid, so the estimator returned its floor cost.
+        solution = [*range(1, n, 2), *range(0, n, 2)]
         return Task(job_id=uuid4(), task_id=0, workload="nqueens",
-                    config=NQueensTaskConfig(n=n, prefix=[0] * depth))
+                    config=NQueensTaskConfig(n=n, prefix=solution[:depth]))
 
     assert cost.cost_of(nq(10, 10)) == 1.0  # nothing left to search
     assert cost.cost_of(nq(16, 2)) > 100 * cost.cost_of(nq(16, 6))
     assert cost.cost_of(nq(17, 1)) > cost.cost_of(nq(16, 1))
+
+def test_nqueens_cost_depends_on_prefix_not_just_depth():
+    def nq(prefix):
+        return Task(
+            job_id=uuid4(),
+            task_id=0,
+            workload="nqueens",
+            config=NQueensTaskConfig(n=16, prefix=prefix),
+        )
+
+    costs = [
+        cost.cost_of(nq([0, 2])),
+        cost.cost_of(nq([0, 3])),
+        cost.cost_of(nq([0, 4])),
+        cost.cost_of(nq([1, 3])),
+    ]
+
+    # These prefixes all have the same depth, but represent different
+    # search subtrees. The estimator should therefore not collapse
+    # them all to the same value.
+    assert len(set(costs)) > 1
+
+
+def test_nqueens_cost_is_reproducible_for_same_prefix():
+    task = Task(
+        job_id=uuid4(),
+        task_id=0,
+        workload="nqueens",
+        config=NQueensTaskConfig(n=16, prefix=[0, 2]),
+    )
+
+    first = cost.cost_of(task)
+    second = cost.cost_of(task)
+
+    assert first == second
+
+
+def test_nqueens_more_fixed_rows_reduces_cost():
+    def nq(prefix):
+        return Task(
+            job_id=uuid4(),
+            task_id=0,
+            workload="nqueens",
+            config=NQueensTaskConfig(n=16, prefix=prefix),
+        )
+
+    shallow = cost.cost_of(nq([0]))
+    deeper = cost.cost_of(nq([0, 2, 5, 7]))
+
+    assert deeper < shallow
 
 
 def test_workloads_whose_size_is_unknown_cost_one():
