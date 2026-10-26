@@ -88,7 +88,7 @@ curl http://127.0.0.1:8000/scheduler/stats                 # what has been measu
 python scripts/simulate_schedulers.py                      # compare them on a simulated grid
 ```
 
-See [docs/project_context.md](docs/project_context.md) for the design, the simulation results and the open items.
+See [docs/project_context.md](docs/project_context.md) for the design, the simulation results and the open items, and [docs/results/scheduler_results.md](docs/results/scheduler_results.md) for the measured comparison (adaptive about 2.2x faster than `random` on Mandelbrot with a laptop and a phone; no gain shown yet on N-Queens).
 
 ## Result model
 

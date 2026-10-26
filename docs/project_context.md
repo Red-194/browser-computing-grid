@@ -38,7 +38,11 @@ Sprint-based. Done:
 - **Work stealing** (built 2026-10-26): an idle worker also runs a task still running elsewhere, first answer wins. See "Work stealing" in section 5.
 - **Performance work** (2026-10-26): a pool of compute threads per tab, batched task and result messages, task-error reporting, and fixes that stop the controller slowing down on large jobs. Roughly 5x to 70x faster on the test jobs. See "Performance work" in section 5.
 
-Next: compare the algorithms on devices that really differ in speed (the phone), with stealing on and off; build a better Mandelbrot cost estimate (every tile is treated as equal cost, but about 70% finish instantly); then decide the default algorithm (still `random`) from real timings.
+The `frontend-ui` branch (teammate's jobs page, dashboard worker view, Busy/Idle status) is merged into `main` (`8684f0a`); see "Jobs page API" in section 5.
+
+Measured result (see [results/scheduler_results.md](results/scheduler_results.md)): on Mandelbrot with a laptop tab and a phone, the adaptive algorithms take about 13 s against 28 s for `random` (2.2x, 18 runs against 5). No measured gain yet on N-Queens, and SAT has not been run live with the adaptive code.
+
+Next: decide the default algorithm (still `random`; `boinc` is the data-backed candidate for Mandelbrot only); run SAT (`sat_batch`) and repeat N-Queens n=17 under each algorithm with `scripts/bench_scheduler.py`; test with more than two devices; demo plan (drafted in conversation, not yet written up or approved).
 
 ## 4. What the old scheduler placeholder could not do (kept for the reasoning; the adaptive scheduler in section 5 addresses these)
 
@@ -174,7 +178,7 @@ Requested by the owner: adaptive like BOINC, modular, several algorithms to try,
 - Live: `GET /scheduler` (active and available), `PUT /scheduler` with `{"name": "boinc"}`, `GET /scheduler/stats` (what has been measured per worker and workload). No authentication, like the rest of the API.
 - `python scripts/simulate_schedulers.py [--scenario NAME] [--seeds N] [--no-timeouts]`.
 
-**What it learns (`stats.py`).** Modelled on BOINC's per-host, per-application runtime estimate (mean and variance of seconds per unit of work). For each (worker, workload): running mean and variance of seconds per unit, fed by the `execution_time_ms` each result already carries. Estimate fallback: the worker's own history once it has 3 samples (BOINC uses 10; we have few devices and short jobs), else the workload average scaled by how fast that worker has been on other workloads, else the plain workload average, else unknown. Reliability per worker comes from timeouts and losses (decayed). After 3 timeouts in a row a worker is quarantined from the adaptive algorithms for 30 s, doubling on each repeat offence up to 10 min, reset by a good result or a reconnect. Task size ("cost") comes from `cost.py`: compression = chunk bytes, regex = characters scanned, Mandelbrot = tile pixels times iterations, SAT = 1 (its size cannot be known up front). N-Queens uses a curve fitted to measured node counts, `exp(0.341 r + 0.0542 r^2)` for `r` rows left to place (about 490 nodes at r = 8, 5 million at r = 14, within about 2x at r = 15); without it every N-Queens task looked the same size and the scheduler could not tell a tiny task from a huge one.
+**What it learns (`stats.py`).** Modelled on BOINC's per-host, per-application runtime estimate (mean and variance of seconds per unit of work). For each (worker, workload): running mean and variance of seconds per unit, fed by the `execution_time_ms` each result already carries. Estimate fallback: the worker's own history once it has 3 samples (BOINC uses 10; we have few devices and short jobs), else the workload average scaled by how fast that worker has been on other workloads, else the plain workload average, else unknown. Reliability per worker comes from timeouts and losses (decayed). After 3 timeouts in a row a worker is quarantined from the adaptive algorithms for 30 s, doubling on each repeat offence up to 10 min, reset by a good result or a reconnect. Task size ("cost") comes from `cost.py`: compression = chunk bytes, regex = characters scanned, Mandelbrot = pixel count times the average iterations per pixel, estimated from a 4x4 grid of sample pixels per tile run for up to 64 iterations (a sample still inside is assumed to run to `max_iterations`; rank correlation 0.995 with the true iteration counts on 48 tiles, total within 11%, 0.28 s for 20,000 tiles), SAT = 1 (its size cannot be known up front). N-Queens uses a curve fitted to measured node counts, `exp(0.341 r + 0.0542 r^2)` for `r` rows left to place (about 490 nodes at r = 8, 5 million at r = 14, within about 2x at r = 15); without it every N-Queens task looked the same size and the scheduler could not tell a tiny task from a huge one.
 
 **Algorithms**
 - `random`, `round_robin`: the baselines. Round-robin now truly rotates one task per worker (before, it favoured the first worker's slots). They ignore speed and quarantine.
@@ -207,6 +211,7 @@ Requested by the owner: adaptive like BOINC, modular, several algorithms to try,
 
 **Fixes found by running it live (2026-10-26)**
 - A task taken back from a worker went straight back to the same worker when that was the only one with a free slot (one task timed out three times in a row, about 54 s wasted). `TaskPCB.last_worker` records where it was taken from, and the adaptive algorithms now keep it waiting for another worker (`AdaptiveScheduler.should_avoid`) unless no other usable worker exists.
+- The avoid rule above had a flaw, found live on the laptop-plus-phone setup: after the heaviest Mandelbrot tile timed out on the fast tab, the rule held it for the phone (about 50x slower) while the fast tab sat idle, and stealing could not help because a waiting task disables it. One `ucb` run took 63.4 s against about 13 s. Fix (`3ca44a3`): a task is held for another worker only if that worker's estimated time for it is at most `AVOID_MAX_SLOWDOWN` (3x) the time on the worker it was taken from. No outlier in the 9 adaptive Mandelbrot runs after the fix.
 - A timeout taught the scheduler nothing, so a worker that had slowed down kept being believed fast and got work it could not finish in time. A timeout now also records a speed sample equal to the time waited (`SpeedTracker.record_lower_bound`; the true time can only be longer).
 - `POST /disconnect/{uuid}` used to be undone at once, because the tab reconnects by itself after 3 s. It now tells the tab not to (`reconnect=false` is the default; `?reconnect=true` imitates a network blip). The tab shows "Disconnected by controller (reload to reconnect)".
 
@@ -257,7 +262,19 @@ Measured on the same two browsers (laptop):
 
 What was learned: a deeper pipeline mattered more than fewer messages. With 4 tasks per thread, batching made the tiny-task job slower (5.0 s to 8.5 s), because a thread finishes its 4 tasks in microseconds and then waits for the next batch; with up to 64 per thread it took 2.4 s. The cost is that a worker with a stale speed estimate can hoard tasks; the N-Queens cost model and the per-thread start of 1 limit that.
 
-Open items: the Mandelbrot cost estimate (sample a few pixels of each tile on the controller); `MAX_PER_THREAD`, the 10 ms result flush, the 256 to 1,000 window and the stealing thresholds are untuned constants; a task that exhausts its retries on worker losses still fails the whole job (a flaky phone could do it); no grace period before requeueing when a socket blips; timeouts count from assignment, not from when the task starts in the tab. Tests: `tests/test_batching.py`, `tests/test_work_stealing.py`, plus additions to `test_reconnect_and_failed_job.py` and `test_scheduler_stats.py`.
+Open items: `MAX_PER_THREAD`, the 10 ms result flush, the 256 to 1,000 window and the stealing thresholds are untuned constants; a task that exhausts its retries on worker losses still fails the whole job (a flaky phone could do it); no grace period before requeueing when a socket blips; timeouts count from assignment, not from when the task starts in the tab. Tests: `tests/test_batching.py`, `tests/test_work_stealing.py`, plus additions to `test_reconnect_and_failed_job.py` and `test_scheduler_stats.py`.
+
+### Jobs page API (merged from `frontend-ui`, 2026-10-26)
+
+The teammate's jobs page needed three things from the backend, built on the control blocks (their version tracked tasks in a separate `task_assignments` registry, which was dropped):
+- `GET /jobs/{id}/tasks`: one row per task with `worker_id` and a status (`Pending` = waiting, `Assigned` = running, `Completed`, `Failed`), 404 for an unknown job.
+- `GET /jobs/{id}/result`: 404 for an unknown job, HTTP 202 (same JSON body) while the job runs, 200 when done; a failed job still returns the `"Job failed."` body, and the page now stops polling and shows Failed (`failJob` in `jobs.js`, not tested in a browser).
+- The worker page shows Busy / Idle / Disconnected, counted across the thread pool. The dashboard Disconnect button now calls `/disconnect/{uuid}?reconnect=false`.
+Tests: `tests/test_jobs_page_api.py`.
+
+### Benchmarking
+
+`scripts/bench_scheduler.py` times one job file under several schedulers and appends rows to `docs/results/scheduler_comparison.csv` (40 rows so far, three sessions). Run one untrained job first so the scheduler has speed data.
 
 ### Candidate scheduler ideas (Proposed, none confirmed new)
 
