@@ -32,6 +32,10 @@ HOLD_MIN_SAVING = 1.0
 # saves at least this many seconds. Copies cost compute, so the bar is high.
 STEAL_RATIO = 0.7
 STEAL_MIN_SAVING = 0.5
+# A task taken back from a worker waits for another worker only if that worker
+# is not much slower for this task. Otherwise a fast worker that had one bad
+# timeout would sit idle while the task waited for a far slower device.
+AVOID_MAX_SLOWDOWN = 3.0
 
 
 @dataclass
@@ -88,7 +92,7 @@ class AdaptiveScheduler(Scheduler):
             estimates = {c.uuid: self.estimate(c, task, cost) for c in open_candidates}
             guess = self.guess(estimates)
             choice = self.pick(task, cost, open_candidates, estimates, guess)
-            if self.should_avoid(task, choice, workers, worker_pcbs, now):
+            if self.should_avoid(task, cost, choice, estimates, workers, worker_pcbs, now):
                 continue  # it was just taken back from this worker; wait for another
             if self.better_to_wait(task, cost, choice, estimates, guess, busy):
                 continue  # leave it waiting; a smaller task may suit this worker
@@ -193,20 +197,28 @@ class AdaptiveScheduler(Scheduler):
                 busy.append((worker, len(pcb.running)))
         return busy
 
-    def should_avoid(self, task, choice, workers, worker_pcbs, now) -> bool:
+    def should_avoid(self, task, cost, choice, estimates, workers, worker_pcbs, now) -> bool:
         """True if this task was just taken back from the chosen worker and some
-        other usable worker exists (even if busy right now).
+        other usable worker (even one that is busy right now) is worth waiting for.
 
         Without this a task that timed out on a slow worker goes straight back to
         it whenever that is the only worker with a free slot, and times out again.
+        But only a worker that is not much slower (AVOID_MAX_SLOWDOWN) counts:
+        holding a heavy task for a device many times slower would be worse.
         """
         if getattr(task, "last_worker", None) != choice.uuid:
             return False
+        own = estimates.get(choice.uuid)
         for worker in workers:
             if worker.uuid == choice.uuid or self.tracker.is_quarantined(worker.uuid, now):
                 continue
             pcb = worker_pcbs.get(worker.uuid) if worker_pcbs else None
-            if pcb is None or pcb.is_online:
+            if pcb is not None and not pcb.is_online:
+                continue
+            other = self.tracker.estimate(worker.uuid, task.workload, cost)
+            if own is None or own.mean <= 0 or other is None:
+                return True  # no basis to compare: prefer a different worker
+            if other.mean <= AVOID_MAX_SLOWDOWN * own.mean:
                 return True
         return False
 

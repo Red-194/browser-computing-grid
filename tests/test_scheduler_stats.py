@@ -203,9 +203,29 @@ def test_regex_cost_is_the_characters_scanned():
     assert cost.task_cost("regex", config) == 8
 
 
-def test_mandelbrot_cost_is_pixels_times_iterations():
-    config = SimpleNamespace(tile_size=10, max_iterations=50)
-    assert cost.task_cost("mandelbrot", config) == 5000
+def mandelbrot_tile(row, col, **overrides):
+    values = dict(width=200, height=200, x_min=-2.0, x_max=1.0, y_min=-1.5, y_max=1.5,
+                  max_iterations=1000, tile_size=50, row_block=row, col_block=col)
+    values.update(overrides)
+    return SimpleNamespace(**values)
+
+
+def test_mandelbrot_tile_inside_the_set_costs_far_more_than_one_outside():
+    inside = cost.task_cost("mandelbrot", mandelbrot_tile(2, 2))  # around the origin
+    outside = cost.task_cost("mandelbrot", mandelbrot_tile(0, 3))  # a corner, escapes at once
+    assert inside > 50 * outside
+
+
+def test_mandelbrot_cost_never_exceeds_pixels_times_iterations():
+    cfg = mandelbrot_tile(2, 2)
+    assert cost.task_cost("mandelbrot", cfg) <= 50 * 50 * 1000
+
+
+def test_mandelbrot_edge_tile_is_priced_by_its_clipped_size():
+    full = cost.task_cost("mandelbrot", mandelbrot_tile(2, 2, width=200))
+    clipped = cost.task_cost("mandelbrot", mandelbrot_tile(2, 3, width=170, x_min=-2.0, x_max=1.0))
+    assert clipped < full  # the last column of tiles is only 20 pixels wide
+    assert cost.task_cost("mandelbrot", mandelbrot_tile(0, 9)) == 1.0  # a tile past the image
 
 
 def test_nqueens_cost_grows_steeply_with_the_rows_left():

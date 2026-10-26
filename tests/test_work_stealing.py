@@ -180,3 +180,18 @@ def test_a_timeout_makes_the_worker_look_slower():
     pcbs["A"].assign(task.key, 1)
     assert take_back(task, pcbs, tracker, now=60.0)
     assert tracker.estimate("A", "test", 1.0).mean > before
+
+
+def test_a_task_is_not_held_for_a_much_slower_worker():
+    # A is fast (1 s), B is slow (10 s) and busy. The task was just taken back
+    # from A, but waiting for B would be worse than trying A again.
+    tracker = trained(slow="B", fast="A")
+    task = JobPCB.create(uuid4(), "test", [0]).task(0)
+    task.assign("A", now=0.0)
+    task.requeue("timed out", attempt=1)
+
+    workers, pcbs = workers_and_pcbs("A", "B")
+    pcbs["B"].assign((uuid4(), 9), 1)  # B is busy
+    assignments = FastestFirstScheduler(tracker).schedule([task], workers, pcbs)
+
+    assert [w.uuid for _, w in assignments] == ["A"]
