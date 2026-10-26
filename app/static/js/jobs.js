@@ -591,10 +591,10 @@ function validatePayload(payload) {
         if (
             !Number.isInteger(config.n) ||
             config.n < 4 ||
-            config.n > 14
+            config.n > 24
         ) {
             setJobStatus(
-                "Board size N must be a whole number between 4 and 14.",
+                "Board size N must be a whole number between 4 and 24.",
                 "error"
             );
             return false;
@@ -1069,7 +1069,7 @@ function renderNQueensResult(result) {
     if (
         Number.isInteger(n) &&
         n >= 1 &&
-        n <= 14 &&
+        n <= 24 &&
         Array.isArray(arrangement)
     ) {
         if (
@@ -1106,7 +1106,7 @@ function renderNQueensResult(result) {
     // So we find one example layout here and draw that.
     let isExample = false;
 
-    if (!queenColumns && Number.isInteger(n) && n >= 1 && n <= 14) {
+    if (!queenColumns && Number.isInteger(n) && n >= 1 && n <= 24) {
         queenColumns = findOneSolution(n);
         isExample = queenColumns !== null;
     }

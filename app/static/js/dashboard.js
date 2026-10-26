@@ -538,7 +538,7 @@ function renderWorkerTable(workers) {
             <tr>
 
                 <td
-                    colspan="6"
+                    colspan="7"
                     class="empty-table"
                 >
 
@@ -610,7 +610,25 @@ function renderWorkerTable(workers) {
                 ${formatLatency(worker)}
             </td>
 
+
+            <td>
+                <button
+                    class="worker-action-btn ${
+                        state === "Offline" ? "remove" : "disconnect"
+                    }"
+                >
+                    ${state === "Offline" ? "Remove" : "Disconnect"}
+                </button>
+            </td>
+
         `;
+
+        row
+            .querySelector(".worker-action-btn")
+            .addEventListener(
+                "click",
+                () => disconnectWorker(worker.uuid)
+            );
 
 
         // OLD COLUMNS (commented out)
@@ -624,22 +642,6 @@ function renderWorkerTable(workers) {
         //     ${worker.last_heartbeat ?? "--"}
         // </td>
         //
-        // DISCONNECT BUTTON (commented out)
-        // The worker page reconnects by itself after 3 seconds,
-        // so this button has no lasting effect. To use it again,
-        // add this cell back to row.innerHTML above, and add an
-        // "Action" <th> in dashboard.html:
-        //
-        // <td>
-        //     <button
-        //         class="worker-action-btn"
-        //         onclick="disconnectWorker('${worker.uuid}')"
-        //     >
-        //         ${state === "Offline" ? "Remove" : "Disconnect"}
-        //     </button>
-        // </td>
-
-
         workerTableBody.appendChild(row);
 
     });
@@ -1041,19 +1043,20 @@ function showWorkerDetails(worker, number) {
                     </button>
 
 
-                    <!-- DISCONNECT BUTTON (commented out: the worker
-                         reconnects by itself, so it has no lasting effect)
-
                     <button
                         id="modalDisconnectButton"
                         style="
                             padding: 10px 18px;
-                            border: none;
+                            border: 1px solid rgba(255, 99, 99, 0.45);
                             border-radius: 8px;
-                            background: #6c7cff;
-                            color: white;
+                            background: rgba(255, 99, 99, 0.14);
+                            color: #ff8a8a;
+                            font-weight: 600;
                             cursor: pointer;
+                            transition: background 0.15s, color 0.15s;
                         "
+                        onmouseover="this.style.background='#ff5c5c'; this.style.color='#fff';"
+                        onmouseout="this.style.background='rgba(255, 99, 99, 0.14)'; this.style.color='#ff8a8a';"
                     >
 
                         ${
@@ -1063,8 +1066,6 @@ function showWorkerDetails(worker, number) {
                         }
 
                     </button>
-
-                    END OF DISCONNECT BUTTON -->
 
 
                 </div>
@@ -1101,24 +1102,23 @@ function showWorkerDetails(worker, number) {
 
 
     // ======================================
-    // DISCONNECT BUTTON (commented out)
-    // Uncomment together with the button above.
+    // DISCONNECT BUTTON
     // ======================================
 
-    // document
-    //     .getElementById("modalDisconnectButton")
-    //     .addEventListener(
-    //         "click",
-    //         async () => {
-    //
-    //             await disconnectWorker(
-    //                 worker.uuid
-    //             );
-    //
-    //             modal.remove();
-    //
-    //         }
-    //     );
+    document
+        .getElementById("modalDisconnectButton")
+        .addEventListener(
+            "click",
+            async () => {
+
+                await disconnectWorker(
+                    worker.uuid
+                );
+
+                modal.remove();
+
+            }
+        );
 
 
     // ======================================

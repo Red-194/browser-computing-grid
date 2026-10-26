@@ -496,6 +496,43 @@
 
         }
 
+
+        .worker-action-btn {
+            padding: 6px 14px;
+            border-radius: 999px;
+            border: 1px solid transparent;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.15s, color 0.15s, transform 0.1s;
+        }
+
+        .worker-action-btn.disconnect {
+            background: rgba(255, 99, 99, 0.14);
+            border-color: rgba(255, 99, 99, 0.45);
+            color: #ff8a8a;
+        }
+
+        .worker-action-btn.disconnect:hover {
+            background: #ff5c5c;
+            color: #fff;
+        }
+
+        .worker-action-btn.remove {
+            background: rgba(142, 153, 181, 0.14);
+            border-color: rgba(142, 153, 181, 0.4);
+            color: #b4bdd6;
+        }
+
+        .worker-action-btn.remove:hover {
+            background: #8e99b5;
+            color: #0f1424;
+        }
+
+        .worker-action-btn:active {
+            transform: scale(0.96);
+        }
+
     </style>
 
 </head>
@@ -947,6 +984,10 @@
 
                             <th>
                                 Latency
+                            </th>
+
+                            <th>
+                                Action
                             </th>
 
                         </tr>
