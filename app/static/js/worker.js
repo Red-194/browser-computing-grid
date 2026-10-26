@@ -9,6 +9,7 @@ const workerUUID = getWorkerUUID();
 
 let heartbeatTimer = null;
 let socket = null;
+let allowReconnect = true; // the controller can turn this off (POST /disconnect/{uuid})
 
 const computeWorker = new Worker(
     "/static/js/compute-worker.js",
@@ -129,6 +130,12 @@ function connect() {
 
         }
 
+        else if (message.type === "disconnect") {
+
+            allowReconnect = message.reconnect !== false;
+
+        }
+
         else if (message.type === "ping") {
 
             sendPong(message.timestamp);
@@ -162,6 +169,14 @@ function connect() {
     socket.onclose = () => {
 
         clearInterval(heartbeatTimer);
+
+        if (!allowReconnect) {
+
+            document.getElementById("state").textContent =
+                "Disconnected by controller (reload to reconnect)";
+            return;
+
+        }
 
         document.getElementById("state").textContent =
             "Disconnected";

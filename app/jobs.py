@@ -233,6 +233,12 @@ async def handle_worker_failure(worker_uuid: str, reason: str) -> None:
     sync_worker_state(worker_uuid)
     if lost:
         speed_tracker.record_failure(worker_uuid)
+        logger.warning(
+            "Worker %s lost (%s); requeueing %d running task(s)",
+            worker_uuid,
+            reason,
+            len(lost),
+        )
     for (job_id, task_id), attempt in lost:
         job_pcb = job_pcbs.get(str(job_id))
         if job_pcb is not None:

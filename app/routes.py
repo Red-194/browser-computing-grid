@@ -3,6 +3,7 @@ from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from .registry import workers
+from .websocket import send_json
 from .services.request_utils import is_localhost
 
 router = APIRouter()
@@ -45,7 +46,13 @@ async def worker(request: Request):
 from .events import notify_dashboards
 
 @router.post("/disconnect/{worker_uuid}")
-async def disconnect(worker_uuid: str):
+async def disconnect(worker_uuid: str, reconnect: bool = False):
+    """Disconnect a worker.
+
+    By default the tab is told not to reconnect, so it stays gone until its
+    page is reloaded. With ?reconnect=true it reconnects after a few seconds,
+    which imitates a network blip.
+    """
 
     worker = workers.get(worker_uuid)
 
@@ -58,6 +65,10 @@ async def disconnect(worker_uuid: str):
         await notify_dashboards()
         return {"success": True}
 
-    # Online -> Disconnect
+    # Online -> Disconnect. Tell the tab first, or it would reconnect by itself.
+    try:
+        await send_json(worker.websocket, {"type": "disconnect", "reconnect": reconnect})
+    except Exception:
+        pass  # the socket may already be dead; closing it below is what matters
     await worker.websocket.close()
     return {"success": True}
