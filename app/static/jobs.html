@@ -668,6 +668,28 @@
             font-size: 11px;
         }
 
+        .open-output-link {
+            display: inline-flex;
+            align-items: center;
+            margin: 0 0 12px;
+            padding: 8px 11px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            color: var(--text);
+            background: var(--panel);
+            text-decoration: none;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .open-output-link[hidden] {
+            display: none;
+        }
+
+        .open-output-link:hover {
+            border-color: var(--accent);
+        }
+
 
         .result-image {
 
@@ -1515,6 +1537,10 @@ aab</textarea>
 
             <div id="jobMonitor">
 
+                <a id="openOutputLink" class="open-output-link" target="_blank" rel="noopener" hidden>
+                    Open live output in a new tab
+                </a>
+
 
                 <!-- SUMMARY -->
 
@@ -1713,7 +1739,7 @@ aab</textarea>
 
 <!-- EXISTING JOB SCRIPT -->
 
-<script src="/static/js/jobs.js?v=raytracing-20261027-3"></script>
+<script src="/static/js/jobs.js?v=live-output-tab-1"></script>
 
 
 </body>

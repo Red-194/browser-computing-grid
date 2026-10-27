@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Live render · Browser Computing Grid</title>
+    <style>
+        :root { color-scheme: dark; font-family: system-ui, sans-serif; background: #0b1020; color: #edf1ff; }
+        * { box-sizing: border-box; }
+        body { margin: 0; min-height: 100vh; display: flex; flex-direction: column; }
+        header { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 18px 24px; border-bottom: 1px solid #26304a; background: #11182b; }
+        h1 { margin: 0; font-size: 18px; font-weight: 650; }
+        #status { margin-top: 5px; color: #a5afc8; font-size: 13px; }
+        #progress { color: #a5afc8; font-size: 13px; white-space: nowrap; }
+        main { flex: 1; display: grid; place-items: center; padding: 24px; }
+        #placeholder { max-width: 440px; color: #a5afc8; text-align: center; line-height: 1.6; }
+        #renderedImage { display: none; max-width: min(100%, 1600px); max-height: calc(100vh - 130px); width: auto; height: auto; object-fit: contain; image-rendering: auto; }
+        #renderedImage.visible { display: block; }
+        @media (max-width: 600px) { header { align-items: flex-start; flex-direction: column; padding: 16px; } main { padding: 12px; } }
+    </style>
+</head>
+<body>
+    <header>
+        <div>
+            <h1 id="title">Live render</h1>
+            <div id="status" role="status">Preparing output…</div>
+        </div>
+        <div id="progress">Waiting for job</div>
+    </header>
+    <main>
+        <div id="placeholder">The render will appear here as workers finish image tiles.</div>
+        <img id="renderedImage" alt="Live rendered output">
+    </main>
+    <script src="/static/js/output.js?v=live-output-tab-1"></script>
+</body>
+</html>

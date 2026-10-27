@@ -14,6 +14,7 @@ const progressFill = document.getElementById("progressFill");
 const assignmentTable = document.getElementById("assignmentTable");
 const resultArea = document.getElementById("resultArea");
 const resultImage = document.getElementById("resultImage");
+let openOutputLink = document.getElementById("openOutputLink");
 const workloadSelect = document.getElementById("workload");
 const nQueensOptions = document.getElementById("nQueensOptions");
 const resultPreviewLabel = document.getElementById("resultPreviewLabel");
@@ -28,6 +29,8 @@ let totalTasks = 0;
 let completed = false;
 let resultPollTimer = null;
 let activeResultUrl = null;
+let livePreviewRequestId = 0;
+let pendingOutputWindow = null;
 
 // Listen for live worker updates from the backend.
 const workerSource = new EventSource("/events");
@@ -140,6 +143,11 @@ jobForm.addEventListener("submit", async (event) => {
         return;
     }
 
+    // Open synchronously from the Submit click so popup blockers allow it.
+    pendingOutputWindow = ["mandelbrot", "raytracing"].includes(currentWorkload)
+        ? window.open("/static/output.html?waiting=1", "_blank")
+        : null;
+
     currentPayload = payload;
 
     submitBtn.disabled = true;
@@ -166,6 +174,18 @@ jobForm.addEventListener("submit", async (event) => {
 
         currentJobId = data.job.job_id;
         totalTasks = Number(data.task_count || 0);
+        if (["mandelbrot", "raytracing"].includes(currentWorkload)) {
+            const outputUrl = outputPageUrl(currentJobId, currentWorkload);
+            openOutputLink = ensureOutputLink();
+            openOutputLink.href = outputUrl;
+            openOutputLink.hidden = false;
+            if (pendingOutputWindow && !pendingOutputWindow.closed) {
+                pendingOutputWindow.location = outputUrl;
+                pendingOutputWindow = null;
+            }
+        } else if (openOutputLink) {
+            openOutputLink.hidden = true;
+        }
 
         showJobMonitor();
         renderJobSummary(data);
@@ -191,6 +211,11 @@ jobForm.addEventListener("submit", async (event) => {
     } catch (error) {
         console.error("Job submission error:", error);
 
+        if (pendingOutputWindow && !pendingOutputWindow.closed) {
+            pendingOutputWindow.close();
+        }
+        pendingOutputWindow = null;
+
         setJobStatus(
             error.message || "Unable to submit job.",
             "error"
@@ -201,6 +226,32 @@ jobForm.addEventListener("submit", async (event) => {
         submitBtn.textContent = "Submit Job";
     }
 });
+
+function outputPageUrl(jobId, workload) {
+    const query = new URLSearchParams({ job_id: jobId, workload });
+    return `/static/output.html?${query}`;
+}
+
+function ensureOutputLink() {
+    if (openOutputLink) return openOutputLink;
+
+    // Create a visible fallback if the browser kept an older cached Jobs page.
+    openOutputLink = document.createElement("a");
+    openOutputLink.id = "openOutputLink";
+    openOutputLink.className = "open-output-link";
+    openOutputLink.target = "_blank";
+    openOutputLink.rel = "noopener";
+    openOutputLink.textContent = "Open live output in a new tab";
+    openOutputLink.style.cssText = [
+        "display:inline-flex", "margin:0 0 12px", "padding:8px 11px",
+        "border:1px solid #46516b", "border-radius:8px", "color:inherit",
+        "text-decoration:none", "font:600 12px system-ui"
+    ].join(";");
+    const monitorHeading = jobMonitor.querySelector("h2");
+    if (monitorHeading) monitorHeading.insertAdjacentElement("afterend", openOutputLink);
+    else jobMonitor.prepend(openOutputLink);
+    return openOutputLink;
+}
 
 // Send the job to the backend.
 // Compression with an uploaded file uses the upload endpoint,
@@ -810,14 +861,54 @@ function startResultPolling() {
     }
 
     refreshTaskAssignments(currentJobId);
+    refreshLivePreview(currentJobId);
     checkJobResult();
 
     resultPollTimer = setInterval(() => {
         if (!completed && currentJobId) {
             refreshTaskAssignments(currentJobId);
+            refreshLivePreview(currentJobId);
             checkJobResult();
         }
     }, 1500);
+}
+
+// Refresh the partially assembled image for image-producing workloads.
+async function refreshLivePreview(jobId) {
+    if (!jobId || jobId !== currentJobId || completed ||
+        !["mandelbrot", "raytracing"].includes(currentWorkload)) {
+        return;
+    }
+
+    const requestId = ++livePreviewRequestId;
+    try {
+        const response = await fetch(
+            `/jobs/${encodeURIComponent(jobId)}/preview`,
+            { cache: "no-store" }
+        );
+        if (!response.ok || jobId !== currentJobId || completed ||
+            requestId !== livePreviewRequestId) {
+            return;
+        }
+
+        const blob = await response.blob();
+        if (jobId !== currentJobId || completed ||
+            requestId !== livePreviewRequestId) {
+            return;
+        }
+
+        if (activeResultUrl) {
+            URL.revokeObjectURL(activeResultUrl);
+        }
+        activeResultUrl = URL.createObjectURL(blob);
+        resultImage.src = activeResultUrl;
+        resultImage.hidden = false;
+        nQueensResult.hidden = true;
+        resultArea.classList.add("visible");
+        resultPreviewLabel.textContent = `${WORKLOAD_NAMES[currentWorkload]} · Live preview`;
+    } catch (error) {
+        console.debug("Live image preview is not available yet:", error);
+    }
 }
 
 function stopResultPolling() {
@@ -934,6 +1025,7 @@ async function checkJobResult() {
             activeResultUrl = URL.createObjectURL(blob);
             resultImage.src = activeResultUrl;
             resultImage.hidden = false;
+            resultPreviewLabel.textContent = `${WORKLOAD_NAMES[currentWorkload]} Output`;
 
             nQueensResult.hidden = true;
             resultArea.classList.add("visible");

@@ -458,6 +458,32 @@ async def get_job_work_stats(job_id: UUID):
     return {"job_id": job_id_str, **stats}
 
 
+@router.get("/{job_id}/preview")
+async def preview(job_id: UUID):
+    """Return the current image buffer while an image job is still running."""
+    job_id_str = str(job_id)
+    if job_id_str not in aggregators:
+        raise HTTPException(status_code=404, detail="Job not found.")
+
+    aggregator = aggregators[job_id_str]
+    if not str(getattr(aggregator, "result_type", "")).startswith("image/"):
+        raise HTTPException(status_code=404, detail="Image preview is not available.")
+    stats = getattr(aggregator, "get_stats", None)
+    completed_tiles = (
+        stats().get("completed_tiles", 0)
+        if callable(stats)
+        else getattr(aggregator, "completed_tasks", 0)
+    )
+    if completed_tiles == 0:
+        return Response(status_code=204, headers={"Cache-Control": "no-store"})
+
+    return Response(
+        content=aggregator.get_result(),
+        media_type=aggregator.result_type,
+        headers={"Cache-Control": "no-store"},
+    )
+
+
 @router.get("/{job_id}/result")
 async def result(job_id: UUID, response: Response = None):
     job_id_str = str(job_id)

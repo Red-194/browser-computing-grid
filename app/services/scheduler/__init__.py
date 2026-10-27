@@ -11,7 +11,7 @@ from .base import Scheduler
 
 logger = logging.getLogger("grid.scheduler")
 
-DEFAULT_SCHEDULER = "random"
+DEFAULT_SCHEDULER = "fastest_first"
 ENV_VARIABLE = "GRID_SCHEDULER"
 
 _factories: dict = {}
