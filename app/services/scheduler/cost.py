@@ -63,6 +63,9 @@ def _mandelbrot(config) -> float:
 # follow the same sphere/shadow/reflection decisions as the Rust kernel. Scale
 # those observed operations to the whole tile and samples-per-pixel count.
 RAYTRACING_COST_SAMPLES = 4
+RAYTRACING_ADAPTIVE_SAMPLES = 8
+# Refine when the base-grid coefficient of variation exceeds about 0.316.
+RAYTRACING_VARIANCE_THRESHOLD = 0.10
 RAY_EPSILON = 1e-4
 
 
@@ -274,13 +277,20 @@ def _rt_trace_cost(origin, direction, scene, depth, max_bounces):
     return counters
 
 
-def _raytracing(config) -> float:
+def _raytracing_estimate(config) -> tuple[float, int]:
+    """Return relative tile work and the number of deterministic probe rays.
+
+    The initial 4x4 probes use the same geometric work metric throughout:
+    rays + primitive intersection tests + light samples. If sample costs vary
+    substantially, an 8x8 grid reduces the risk of missing a narrow expensive
+    region. These values rank tasks; they do not predict elapsed time.
+    """
     start_x = config.col_block * config.tile_size
     start_y = config.row_block * config.tile_size
     tile_width = min(config.tile_size, max(0, config.width - start_x))
     tile_height = min(config.tile_size, max(0, config.height - start_y))
     if tile_width <= 0 or tile_height <= 0:
-        return 1.0
+        return 1.0, 0
 
     scene = config.scene
     camera = scene.camera
@@ -291,34 +301,45 @@ def _raytracing(config) -> float:
     up = _rt_normalize(_rt_cross(right, forward))
     half_height = math.tan(math.radians(camera.vertical_fov_degrees) * 0.5)
     aspect = config.width / config.height
-    total = 0.0
 
-    for sample_y in range(RAYTRACING_COST_SAMPLES):
-        pixel_y = start_y + (sample_y + 0.5) * tile_height / RAYTRACING_COST_SAMPLES
-        screen_y = (1.0 - 2.0 * pixel_y / config.height) * half_height
-        for sample_x in range(RAYTRACING_COST_SAMPLES):
-            pixel_x = start_x + (sample_x + 0.5) * tile_width / RAYTRACING_COST_SAMPLES
-            screen_x = (2.0 * pixel_x / config.width - 1.0) * aspect * half_height
-            direction = _rt_normalize(
-                _rt_add(
-                    forward,
-                    _rt_add(_rt_scale(right, screen_x), _rt_scale(up, screen_y)),
+    def sample_grid(side):
+        values = []
+        for sample_y in range(side):
+            pixel_y = start_y + (sample_y + 0.5) * tile_height / side
+            screen_y = (1.0 - 2.0 * pixel_y / config.height) * half_height
+            for sample_x in range(side):
+                pixel_x = start_x + (sample_x + 0.5) * tile_width / side
+                screen_x = (2.0 * pixel_x / config.width - 1.0) * aspect * half_height
+                direction = _rt_normalize(
+                    _rt_add(
+                        forward,
+                        _rt_add(_rt_scale(right, screen_x), _rt_scale(up, screen_y)),
+                    )
                 )
-            )
-            work = _rt_trace_cost(
-                camera.position, direction, scene, depth=0, max_bounces=config.max_bounces
-            )
-            # These are deterministic estimated work units, not milliseconds.
-            total += (
-                work["rays"] + work["sphere_tests"] + work["box_tests"]
-                + work["plane_tests"] + work["light_samples"]
-            )
+                work = _rt_trace_cost(
+                    camera.position, direction, scene, depth=0, max_bounces=config.max_bounces
+                )
+                values.append(
+                    work["rays"] + work["sphere_tests"] + work["box_tests"]
+                    + work["plane_tests"] + work["light_samples"]
+                )
+        return values
 
-    sample_count = RAYTRACING_COST_SAMPLES ** 2
-    return max(
-        1.0,
-        total / sample_count * tile_width * tile_height * config.samples_per_pixel,
+    samples = sample_grid(RAYTRACING_COST_SAMPLES)
+    average = sum(samples) / len(samples)
+    variance = sum((value - average) ** 2 for value in samples) / len(samples)
+    if variance > average * average * RAYTRACING_VARIANCE_THRESHOLD:
+        samples = sample_grid(RAYTRACING_ADAPTIVE_SAMPLES)
+
+    estimate = (
+        sum(samples) / len(samples)
+        * tile_width * tile_height * config.samples_per_pixel
     )
+    return max(1.0, estimate), len(samples)
+
+
+def _raytracing(config) -> float:
+    return _raytracing_estimate(config)[0]
 
 NQUEENS_EXACT_DEPTH = 2
 NQUEENS_PROBES_PER_FRONTIER = 16

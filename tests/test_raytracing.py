@@ -7,6 +7,7 @@ from pydantic import ValidationError
 from app.models.jobs import (
     RayCamera,
     RayBox,
+    RayLight,
     RayPlane,
     RayScene,
     RaySphere,
@@ -15,7 +16,7 @@ from app.models.jobs import (
 )
 from app.models.tasks import RayTracingTaskConfig
 from app.services.aggregators.raytracing import RaytracingAggregator
-from app.services.scheduler.cost import task_cost
+from app.services.scheduler.cost import _raytracing_estimate, task_cost
 from app.services.splitters.raytracing import RaytracingSplitter
 
 
@@ -82,13 +83,21 @@ def test_raytracing_splitter_tiles_cover_non_divisible_image_once():
     assert by_coordinate[(1, 2)].task_id == 5
 
 
-def _task_config(row=0, col=0, *, spp=1, bounces=2):
+def _task_config(
+    row=0, col=0, *, spp=1, bounces=2, width=256, height=192,
+    tile_size=64, scene=None,
+):
+    config_args = {
+        "width": width,
+        "height": height,
+        "tile_size": tile_size,
+        "samples_per_pixel": spp,
+        "max_bounces": bounces,
+    }
+    if scene is not None:
+        config_args["scene"] = scene
     config = RayTracingConfig(
-        width=256,
-        height=192,
-        tile_size=64,
-        samples_per_pixel=spp,
-        max_bounces=bounces,
+        **config_args,
     )
     return RayTracingTaskConfig(
         width=config.width,
@@ -121,6 +130,35 @@ def test_raytracing_estimator_scales_samples_and_reflection_work():
     reflected = task_cost("raytracing", _task_config(row=2, col=1, spp=1, bounces=2))
     assert two_samples == pytest.approx(one_sample * 2)
     assert reflected > one_sample
+
+
+def test_raytracing_estimator_refines_heterogeneous_tiles_only():
+    camera = RayCamera(
+        position=(0, 0, 5), look_at=(0, 0, 0), vertical_fov_degrees=90
+    )
+    uniform_scene = RayScene(camera=camera, spheres=[], lights=[])
+    heterogeneous_scene = RayScene(
+        camera=camera,
+        spheres=[RaySphere(center=(0, 0, 0), radius=2, color=(1, 0, 0), reflectivity=0.6)],
+        lights=[RayLight(position=(0, 4, 4))],
+    )
+    uniform = _task_config(
+        width=128, height=128, tile_size=128, bounces=0, scene=uniform_scene
+    )
+    heterogeneous = _task_config(
+        width=128, height=128, tile_size=128, bounces=0, scene=heterogeneous_scene
+    )
+
+    _, uniform_samples = _raytracing_estimate(uniform)
+    _, refined_samples = _raytracing_estimate(heterogeneous)
+
+    assert uniform_samples == 4 * 4
+    assert refined_samples == 8 * 8
+
+
+def test_raytracing_estimate_and_probe_count_are_reproducible():
+    task = _task_config(row=2, col=1)
+    assert _raytracing_estimate(task) == _raytracing_estimate(task)
 
 
 def _tile_result(task_id, row, col, width, height, color, *, rays=1, time_ms=1.0):
